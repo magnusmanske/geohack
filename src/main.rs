@@ -117,6 +117,12 @@ async fn lock_icon_gif() -> impl IntoResponse {
 }
 
 #[axum::debug_handler]
+async fn index() -> Html<String> {
+    let html = include_str!("../data/index.html").to_string();
+    Html(html)
+}
+
+#[axum::debug_handler]
 async fn geohack(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -156,7 +162,8 @@ async fn run_server() -> Result<()> {
     // let cors = CorsLayer::new().allow_origin(Any);
 
     let app = Router::new()
-        // .route("/", get(root))
+        .route("/", get(index))
+        .route("/index.php", get(index))
         .route("/main.css", get(main_css))
         .route("/geohack.php", get(geohack))
         .route("/favicon.ico", get(favicon_ico))
@@ -192,13 +199,3 @@ async fn run_server() -> Result<()> {
 async fn main() -> Result<()> {
     run_server().await
 }
-
-/*
-TESTING:
-
-curl -sg 'https://geohack.toolforge.org/geohack.php?pagename=G%C3%B6ttingen&params=51_32_02_N_09_56_08_E_type:city(118946)_region:DE-NI' > g1.html
-
-curl -sg 'http://localhost:8000/geohack.php?pagename=G%C3%B6ttingen&params=51_32_02_N_09_56_08_E_type:city(118946)_region:DE-NI' > g2.html
- ; diff -b g1.html g2.html
-
- */
