@@ -52,13 +52,8 @@ use std::net::Ipv4Addr;
 
 fn ip_string_to_array(ip_str: &str) -> Option<[u8; 4]> {
     match ip_str.parse::<Ipv4Addr>() {
-        Ok(ip_addr) => {
-            // Ipv4Addr can be converted into [u8; 4]
-            // For example, using `into()` or by accessing its octets.
-            // A common way is to use `octets()` method.
-            Some(ip_addr.octets())
-        }
-        Err(_) => None, // Return None if parsing fails
+        Ok(ip_addr) => Some(ip_addr.octets()),
+        Err(_) => None,
     }
 }
 
