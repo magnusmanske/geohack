@@ -44,7 +44,7 @@ pub struct MapSources {
 
 impl MapSources {
     pub fn new(params: &str, language: &str) -> Result<Self> {
-        let p = GeoParam::new(&params)?;
+        let p = GeoParam::new(params)?;
 
         Ok(MapSources {
             p,
