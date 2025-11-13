@@ -1,4 +1,4 @@
-use crate::GehohackParameters;
+use crate::QueryParameters;
 use anyhow::Result;
 use std::{
     collections::HashMap,
@@ -26,7 +26,7 @@ impl Templates {
         &self,
         language: &str,
         globe: &str,
-        query: &GehohackParameters,
+        query: &QueryParameters,
     ) -> Result<String> {
         // TODO proper caching
         let use_sandbox = query.sandbox();
@@ -94,5 +94,35 @@ impl Templates {
             .user_agent(HTTP_USER_AGENT)
             .build()?;
         Ok(client)
+    }
+
+    /// ONLY TO BE USED FOR INTERNAL TESTING PURPOSES
+    pub async fn seed_test_cases(&self) -> Result<()> {
+        self.set_template(
+            "en--false-None",
+            include_str!("../test_data/en--false-None.html"),
+        )
+        .await?;
+        self.set_template(
+            "en-ganymede-false-None",
+            include_str!("../test_data/en-ganymede-false-None.html"),
+        )
+        .await?;
+        self.set_template(
+            "en-mars-false-None",
+            include_str!("../test_data/en-mars-false-None.html"),
+        )
+        .await?;
+        self.set_template(
+            "en-moon-false-None",
+            include_str!("../test_data/en-moon-false-None.html"),
+        )
+        .await?;
+        self.set_template(
+            "en-venus-false-None",
+            include_str!("../test_data/en-venus-false-None.html"),
+        )
+        .await?;
+        Ok(())
     }
 }

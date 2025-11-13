@@ -55,15 +55,15 @@ impl GeoParam {
         Ok(geo)
     }
 
-    pub fn latdeg(&self) -> f64 {
+    pub const fn latdeg(&self) -> f64 {
         self.latdeg
     }
 
-    pub fn londeg(&self) -> f64 {
+    pub const fn londeg(&self) -> f64 {
         self.londeg
     }
 
-    /// Private: Get a set of coordinates from parameters
+    /// Get a set of coordinates from parameters
     fn get_coor(&mut self) -> Result<()> {
         if self.pieces.is_empty() {
             return Err(anyhow!("No coordinates provided"));
@@ -83,7 +83,7 @@ impl GeoParam {
             self.londeg = piece[i + 1..].parse().unwrap_or(0.0);
             self.coor = vec![self.latdeg.to_string(), self.londeg.to_string()];
             self.pieces.remove(0);
-        } else if self.pieces.len() >= 4 && self.is_coor(&self.pieces[1], &self.pieces[3]) {
+        } else if self.pieces.len() >= 4 && Self::is_coor(&self.pieces[1], &self.pieces[3]) {
             // Check various coordinate formats
             self.latdeg = self.pieces.remove(0).parse().unwrap_or(0.0);
             lat_ns = self.pieces.remove(0);
@@ -95,7 +95,7 @@ impl GeoParam {
                 self.londeg.to_string(),
                 lon_ew.clone(),
             ];
-        } else if self.pieces.len() >= 6 && self.is_coor(&self.pieces[2], &self.pieces[5]) {
+        } else if self.pieces.len() >= 6 && Self::is_coor(&self.pieces[2], &self.pieces[5]) {
             self.latdeg = self.pieces.remove(0).parse().unwrap_or(0.0);
             latmin = self.pieces.remove(0).parse().unwrap_or(0.0);
             lat_ns = self.pieces.remove(0);
@@ -110,7 +110,7 @@ impl GeoParam {
                 lonmin.to_string(),
                 lon_ew.clone(),
             ];
-        } else if self.pieces.len() >= 8 && self.is_coor(&self.pieces[3], &self.pieces[7]) {
+        } else if self.pieces.len() >= 8 && Self::is_coor(&self.pieces[3], &self.pieces[7]) {
             self.latdeg = self.pieces.remove(0).parse().unwrap_or(0.0);
             latmin = self.pieces.remove(0).parse().unwrap_or(0.0);
             latsec = self.pieces.remove(0).parse().unwrap_or(0.0);
@@ -231,19 +231,20 @@ impl GeoParam {
                     let mut val = &s[i + 1..];
 
                     // Check for arguments in parentheses
-                    if let (Some(j), Some(k)) = (val.find('('), val.find(')')) {
-                        if k > j {
-                            attributes.insert(format!("arg:{}", attr), val[j + 1..k].to_string());
-                            val = &val[..j];
-                        }
+                    if let (Some(j), Some(k)) = (val.find('('), val.find(')'))
+                        && k > j
+                    {
+                        attributes.insert(format!("arg:{}", attr), val[j + 1..k].to_string());
+                        val = &val[..j];
                     }
 
                     attributes.insert(attr.to_string(), val.to_string());
                 }
-            } else if let Ok(num) = s.parse::<i32>() {
-                if num > 0 && !attributes.contains_key("scale") {
-                    attributes.insert("scale".to_string(), num.to_string());
-                }
+            } else if let Ok(num) = s.parse::<i32>()
+                && num > 0
+                && !attributes.contains_key("scale")
+            {
+                attributes.insert("scale".to_string(), num.to_string());
             }
         }
 
@@ -251,7 +252,7 @@ impl GeoParam {
     }
 
     /// Check if strings represent valid N/S and E/W directions
-    fn is_coor(&self, ns: &str, ew: &str) -> bool {
+    fn is_coor(ns: &str, ew: &str) -> bool {
         let ns = ns.to_uppercase();
         let ew = ew.to_uppercase();
         (ns == "N" || ns == "S") && (ew == "E" || ew == "W")
@@ -303,15 +304,15 @@ impl GeoParam {
         }
     }
 
-    pub fn coor(&self) -> &Vec<String> {
+    pub const fn coor(&self) -> &Vec<String> {
         &self.coor
     }
 
-    pub fn pieces(&self) -> &Vec<String> {
+    pub const fn pieces(&self) -> &Vec<String> {
         &self.pieces
     }
 
-    pub fn pieces_mut(&mut self) -> &mut Vec<String> {
+    pub const fn pieces_mut(&mut self) -> &mut Vec<String> {
         &mut self.pieces
     }
 }

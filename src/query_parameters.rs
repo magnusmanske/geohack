@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
 /// The (potential) URL parameters for the geohack.php endpoint.
-#[derive(Debug, Clone, Deserialize)]
-pub struct GehohackParameters {
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct QueryParameters {
     pub language: Option<String>,
     pub pagename: Option<String>,
     pub params: String,
@@ -20,7 +20,7 @@ pub struct GehohackParameters {
     pub http_referrer: Option<String>,
 }
 
-impl GehohackParameters {
+impl QueryParameters {
     /// Sanitizes the project parameter
     pub fn project(&self) -> Option<String> {
         match &self.project {
