@@ -5,12 +5,12 @@ geohack.php?params=64_44_N_177_30_E_type:city_source:enwiki&title=Anadyr+%28East
 geohack.php?params=37.883333_N_-4.766667_E_&title=C%C3%B3rdoba%2C+Spain
 geohack.php?params=-37.783333_N_175.283333_E_&title=Hamilton%2C+New+Zealand
 geohack.php?params=10.70_S_335.25_E_globe:Venus&title=Venera+8
-
 geohack.php?params=9.3_S_322_W_globe:Mars&title=Dawes+Crater%2C+Sinus+Sabaeus+quadrangle
 geohack.php?params=13_19_N_169_9_W_globe:Moon&title=Apollo+11+landing
 geohack.php?params=46.9_S_17.5_W_globe:ganymede_dim:2988&title=Dardanus+Sulcus+Crater
 geohack.php?params=38.89767_N_-77.03655_E_type:landmark_region:US&title=The+White+House
 geohack.php?params=51_30_28_N_0_07_41_W_type:city(7000000)_region:GB-LND&title=London
+
 geohack.php?params=35_41_N_139_46_E_type:city_region:JP-13&title=Tokyo
 geohack.php?params=55_45_8_N_37_37_56_E_region:RU_type:city(10,462,424)&title=Moscow
 geohack.php?params=35_S_149_E_type:city_region:AU-ACT_source:enwiki&title=Canberra

@@ -654,4 +654,74 @@ mod tests {
         let expected = include_str!("../test_data/test_8.html");
         assert_eq!(html.trim(), expected.trim());
     }
+
+    #[tokio::test]
+    async fn test_9() {
+        // geohack.php?params=13_19_N_169_9_W_globe:Moon&title=Apollo+11+landing
+        let query = QueryParameters {
+            params: "13_19_N_169_9_W_globe:Moon".to_string(),
+            title: Some("Apollo 11 landing".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_9.html", html).unwrap();
+        let expected = include_str!("../test_data/test_9.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_10() {
+        // geohack.php?params=46.9_S_17.5_W_globe:ganymede_dim:2988&title=Dardanus+Sulcus+Crater
+        let query = QueryParameters {
+            params: "46.9_S_17.5_W_globe:ganymede_dim:2988".to_string(),
+            title: Some("Dardanus Sulcus Crater".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_10.html", html).unwrap();
+        let expected = include_str!("../test_data/test_10.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_11() {
+        // geohack.php?params=38.89767_N_-77.03655_E_type:landmark_region:US&title=The+White+House
+        let query = QueryParameters {
+            params: "38.89767_N_-77.03655_E_type:landmark_region:US".to_string(),
+            title: Some("The White House".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_11.html", html).unwrap();
+        let expected = include_str!("../test_data/test_11.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_12() {
+        // geohack.php?params=51_30_28_N_0_07_41_W_type:city(7000000)_region:GB-LND&title=London
+        let query = QueryParameters {
+            params: "51_30_28_N_0_07_41_W_type:city(7000000)_region:GB-LND".to_string(),
+            title: Some("London".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_12.html", html).unwrap();
+        let expected = include_str!("../test_data/test_12.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_13() {
+        // geohack.php?params=35_41_N_139_46_E_type:city_region:JP-13&title=Tokyo
+        let query = QueryParameters {
+            params: "35_41_N_139_46_E_type:city_region:JP-13".to_string(),
+            title: Some("Tokyo".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_13.html", html).unwrap();
+        let expected = include_str!("../test_data/test_13.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
 }
