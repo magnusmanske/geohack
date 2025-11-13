@@ -93,9 +93,10 @@ async fn geohack(
 
     let language = geohack.lang.trim().to_ascii_lowercase();
     let globe = geohack.globe.trim().to_ascii_lowercase();
+    let purge = query.purge();
     let template_content = state
         .templates
-        .load(&language, &globe, &query)
+        .load(&language, &globe, &query, purge)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

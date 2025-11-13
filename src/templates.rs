@@ -28,14 +28,15 @@ impl Templates {
         language: &str,
         globe: &str,
         query: &QueryParameters,
+        purge_cache: bool,
     ) -> Result<String> {
-        // TODO proper caching
         let use_sandbox = query.sandbox();
         let use_project = query.project();
 
         // Try cache
         let caching_key = format!("{language}-{globe}-{use_sandbox}-{use_project:?}");
-        if let Some(template) = self.templates.read().await.get(&caching_key)
+        if !purge_cache
+            && let Some(template) = self.templates.read().await.get(&caching_key)
             && let Some(expires) = &template.expires
             && expires > &Instant::now()
         {

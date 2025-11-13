@@ -540,7 +540,7 @@ mod tests {
         geohack.init_from_query(query.clone())?;
         let language = geohack.lang.trim().to_ascii_lowercase();
         let globe = geohack.globe.trim().to_ascii_lowercase();
-        let template_content = templates.load(&language, &globe, &query).await?;
+        let template_content = templates.load(&language, &globe, &query, false).await?;
         geohack.set_page_content(&template_content);
         geohack.process()
     }
