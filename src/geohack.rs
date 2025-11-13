@@ -176,10 +176,21 @@ impl GeoHack {
         self.title = html_escape::encode_text(&title).to_string();
 
         // Initialize Map Sources
-        self.map_sources = MapSources::new(&self.params, None, None)?; // TODO params, language
+        // Some(params)
+        self.map_sources = MapSources::new(&self.params, &self.language_with_fallback())?;
 
         self.detect_region_zoom_globe();
         Ok(())
+    }
+
+    pub fn language_with_fallback(&self) -> String {
+        const FALLBACK_LANGUAGE: &str = "en";
+        let lang = self.lang.trim().to_ascii_lowercase();
+        if lang.is_empty() {
+            FALLBACK_LANGUAGE.to_string()
+        } else {
+            lang
+        }
     }
 
     /// Detect region from parameters
@@ -319,7 +330,7 @@ Waarschuwing:
     /// Process the template and build final output
     pub fn process(&mut self) -> String {
         // Build the map sources output
-        let processed_content = self.map_sources.build_output();
+        let processed_content = self.map_sources.build_output(&self.pagename, &self.title);
 
         // Apply ugly hacks
         let processed_content = processed_content
@@ -346,105 +357,43 @@ Waarschuwing:
     }
 
     fn fix_wikipedia_html(&mut self) {
-        let lang = self.lang.clone();
-        let theparams = self.params.clone();
-        let r_pagename = self.pagename.clone();
-
-        self.page_content =
-            self.process_wikipedia_page(self.page_content.clone(), &lang, &theparams, &r_pagename);
-        // println!("Processed page: {}", html);
-    }
-
-    // Helper function to simulate PHP's str_replace
-    fn str_replace(search: &str, replace: &str, subject: &str) -> String {
-        subject.replace(search, replace)
-    }
-
-    // Helper function to get a div section by ID (simulating get_div_section)
-    fn get_div_section2(page: &str, section_id: &str) -> String {
-        // This is a simplified implementation - actual implementation would depend on
-        // the original get_div_section function's logic
-        let pattern = format!(
-            r#"<div[^>]*id="{}"[^>]*>.*?</div>"#,
-            regex::escape(section_id)
-        );
-        if let Ok(re) = Regex::new(&pattern)
-            && let Some(mat) = re.find(page)
-        {
-            return mat.as_str().to_string();
-        }
-        String::new()
-    }
-
-    // Helper function to create a link (simulating make_link)
-    fn make_link2(lang: &str, theparams: &str, r_pagename: &str) -> String {
-        // Implementation would depend on the original make_link function
-        format!("/{}/{}/{}", lang, theparams, r_pagename)
+        (self.page_content, self.actions, self.languages) = self.process_wikipedia_page();
     }
 
     // Main processing function
-    fn process_wikipedia_page(
-        &mut self,
-        mut page: String,
-        lang: &str,
-        theparams: &str,
-        r_pagename: &str,
-    ) -> String {
-        // Fix old geohack links in template
-        page = page.replace("https://geohack.toolforge.org/geohack.php?", "?");
+    fn process_wikipedia_page(&self) -> (String, String, String) {
+        let mut page = self.page_content.clone();
+        page = page
+            .replace(
+                r#" href="/w"#,
+                &format!(r#" href="//{}.wikipedia.org/w"#, self.lang),
+            )
+            .replace(r#" role="navigation""#, "")
+            .replace(r#" class="portlet""#, "");
 
-        // <?php
-        // $page = str_replace ( ' href="/w' , " href=\"//{$lang}.wikipedia.org/w" , $page ) ;
-        page = Self::str_replace(
-            r#" href="/w"#,
-            &format!(r#" href="//{}.wikipedia.org/w"#, lang),
-            &page,
-        );
+        let actions_section = self.get_div_section(&page, "p-cactions", 0);
+        let actions = actions_section.replace(r#"id="p-cactions""#, "");
 
-        // $page = str_replace ( ' role="navigation"' , '' , $page ) ;
-        page = Self::str_replace(r#" role="navigation""#, "", &page);
-
-        // $page = str_replace ( ' class="portlet"' , '' , $page ) ;
-        page = Self::str_replace(r#" class="portlet""#, "", &page);
-
-        // $actions = str_replace ( 'id="p-cactions"', '', get_div_section ( $page, "p-cactions" ) ) ;
-        let actions_section = Self::get_div_section2(&page, "p-cactions");
-        self.actions = Self::str_replace(r#"id="p-cactions""#, "", &actions_section);
-
-        // $languages = preg_replace_callback ( '/ href="(https*:)\/\/([a-z\-]+){0,1}\.wikipedia\.org\/wiki\/[^"]*/', create_function(
-        //     '$match',
-        //     'global $theparams, $r_pagename; return " href=\"" . make_link ( $match[2] , $theparams , $r_pagename );'
-        // ), get_div_section ( $page, "p-lang" ) ) ;
-        let lang_section = Self::get_div_section2(&page, "p-lang");
-        self.languages = {
+        let lang_section = self.get_div_section(&page, "p-lang", 0);
+        let languages = {
             lazy_static! {
                 static ref RE: Regex =
                     Regex::new(r#" href="(https?:)//([a-z\-]+)?\.wikipedia\.org/wiki/[^"]*"#)
                         .unwrap();
             }
 
-            let theparams_clone = theparams.to_string();
-            let r_pagename_clone = r_pagename.to_string();
+            let theparams_clone = self.params.to_string();
+            let r_pagename_clone = self.pagename.to_string();
 
             RE.replace_all(&lang_section, |caps: &regex::Captures| {
                 let lang_match = caps.get(2).map_or("", |m| m.as_str());
                 format!(
                     r#" href="{}""#,
-                    Self::make_link2(lang_match, &theparams_clone, &r_pagename_clone)
+                    self.make_link(lang_match, &theparams_clone, &r_pagename_clone)
                 )
             })
             .to_string()
         };
-
-        // # Remove edit links
-        // do {
-        //     $op = $page ;
-        //     $p = explode ( '<span class="editsection"' , $page , 2 ) ;
-        //     if ( count ( $p ) == 1 ) continue ;
-        //     $page = array_shift ( $p ) ;
-        //     $p = explode ( '</span>' , array_pop ( $p ) , 2 ) ;
-        //     $page .= array_pop ( $p ) ;
-        // } while ( $op != $page ) ;
 
         // Remove edit links - loop until no more editsection spans are found
         loop {
@@ -475,17 +424,6 @@ Waarschuwing:
             }
         }
 
-        // # Build the page
-        // if ( strpos ( $page , '<!-- start content -->' ) ) {
-        //     $arr = explode ( '<!-- start content -->' , $page , 2 );
-        //     $page = array_pop ( $arr ) ;
-        //     $arr = explode ( '<!-- end content -->' , $page , 2 );
-        //     $page = array_shift ( $arr ) ;
-        // } else {
-        //     $page = array_pop ( explode ( '<!-- bodytext -->' , $page , 2 ) ) ;
-        //     $page = array_shift ( explode ( '<!-- /bodytext -->' , $page , 2 ) ) ;
-        // }
-
         // Build the page - extract content between markers
         if page.contains("<!-- start content -->") {
             // Split by start content marker and take the second part
@@ -508,7 +446,7 @@ Waarschuwing:
             }
         }
 
-        page
+        (page, actions, languages)
     }
 
     fn process_region_name(end: &str) -> Option<String> {

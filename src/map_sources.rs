@@ -39,19 +39,19 @@ pub struct MapSources {
     pub mapsources: String,
     pub thetext: String,
     pub params: Option<String>,
-    pub language: Option<String>,
+    pub language: String,
 }
 
 impl MapSources {
-    pub fn new(coor: &str, params: Option<String>, language: Option<String>) -> Result<Self> {
-        let p = GeoParam::new(coor)?;
+    pub fn new(params: &str, language: &str) -> Result<Self> {
+        let p = GeoParam::new(&params)?;
 
         Ok(MapSources {
             p,
             mapsources: "Map sources".to_string(),
             thetext: String::new(),
-            params,
-            language,
+            params: Some(params.to_string()),
+            language: language.to_string(),
         })
     }
 
@@ -67,7 +67,7 @@ impl MapSources {
     }
     */
 
-    pub fn build_output(&mut self) -> String {
+    pub fn build_output(&mut self, r_pagename: &str, r_title: &str) -> String {
         // global $wgOut, $wgUser, $wgContLang, $wgRequest;
         /*
         if (($e = $this->p->get_error()) != "") {
@@ -398,70 +398,6 @@ impl MapSources {
             "{pagename_gmaps}",
         ];
 
-        // workaround for quoting of {}
-        let search_quoted = vec![
-            "&#123;latdegdec&#125;",
-            "&#123;londegdec&#125;",
-            "&#123;latdegdecabs&#125;",
-            "&#123;londegdecabs&#125;",
-            "&#123;latdeground&#125;",
-            "&#123;londeground&#125;",
-            "&#123;latdegroundabs&#125;",
-            "&#123;londegroundabs&#125;",
-            "&#123;latdeg_outer_abs&#125;",
-            "&#123;londeg_outer_abs&#125;",
-            "&#123;latantipodes&#125;",
-            "&#123;longantipodes&#125;",
-            "&#123;londegneg&#125;",
-            "&#123;latdegint&#125;",
-            "&#123;londegint&#125;",
-            "&#123;latdegabs&#125;",
-            "&#123;londegabs&#125;",
-            "&#123;latmindec&#125;",
-            "&#123;lonmindec&#125;",
-            "&#123;latminint&#125;",
-            "&#123;lonminint&#125;",
-            "&#123;latsecdec&#125;",
-            "&#123;lonsecdec&#125;",
-            "&#123;latsecint&#125;",
-            "&#123;lonsecint&#125;",
-            "&#123;latNS&#125;",
-            "&#123;lonEW&#125;",
-            "&#123;utmzone&#125;",
-            "&#123;utmnorthing&#125;",
-            "&#123;utmeasting&#125;",
-            "&#123;utm33northing&#125;",
-            "&#123;utm33easting&#125;",
-            "&#123;osgb36ref&#125;",
-            "&#123;osgb36northing&#125;",
-            "&#123;osgb36easting&#125;",
-            "&#123;ch1903northing&#125;",
-            "&#123;ch1903easting&#125;",
-            "&#123;scale&#125;",
-            "&#123;mmscale&#125;",
-            "&#123;altitude&#125;",
-            "&#123;zoom&#125;",
-            "&#123;osmzoom&#125;",
-            "&#123;span&#125;",
-            "&#123;type&#125;",
-            "&#123;region&#125;",
-            "&#123;globe&#125;",
-            "&#123;page&#125;",
-            "&#123;pagename&#125;",
-            "&#123;title&#125;",
-            "&#123;pagenamee&#125;",
-            "&#123;titlee&#125;",
-            "&#123;geocountry&#125;",
-            "&#123;geoa1&#125;",
-            "&#123;params&#125;",
-            "&#123;language&#125;",
-            "&#123;pagename_gmaps&#125;",
-        ];
-
-        // For now, using placeholder values for global variables
-        let r_title = ""; // Would come from global context
-        let r_pagename = ""; // Would come from global context
-
         let longantipodes = if lon.deg > 0.0 {
             lon.deg - 180.0
         } else {
@@ -522,10 +458,8 @@ impl MapSources {
             attr.get("region").unwrap_or(&String::new()).clone(),
             attr.get("globe").unwrap_or(&String::new()).clone(),
             attr.get("page").unwrap_or(&String::new()).clone(),
-            // get_request( 'title', '' )
             r_pagename.to_string(),
             r_title.to_string(),
-            // TODO make less hackist
             urlencoding::encode(r_pagename).into_owned(),
             urlencoding::encode(r_title).into_owned(),
             region.clone(),
@@ -539,15 +473,14 @@ impl MapSources {
                 })
                 .unwrap_or_default(),
             html_escape::encode_text(&self.params.as_ref().unwrap_or(&"".to_string())).to_string(),
-            html_escape::encode_text(&self.language.as_ref().unwrap_or(&"en".to_string()))
-                .to_string(),
+            html_escape::encode_text(&self.language).to_string(),
             pagename_gmaps,
         ];
 
         // Replace quoted versions first
-        for (i, search_str) in search_quoted.iter().enumerate() {
+        for (i, search_str) in search.iter().map(|s| Self::quote_html(s)).enumerate() {
             if let Some(replacement) = replace.get(i) {
-                bstext = bstext.replace(search_str, replacement);
+                bstext = bstext.replace(&search_str, replacement);
             }
         }
 
@@ -559,5 +492,24 @@ impl MapSources {
         }
 
         bstext
+    }
+
+    fn quote_html(s: &str) -> String {
+        s.replace('{', "&#123;").replace('}', "&#125;")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // use super::*;
+
+    use crate::map_sources::MapSources;
+
+    #[test]
+    fn test_html_escape() {
+        assert_eq!(
+            "&#123;pagename_gmaps&#125;",
+            MapSources::quote_html("{pagename_gmaps}")
+        );
     }
 }
