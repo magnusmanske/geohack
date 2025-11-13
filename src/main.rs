@@ -81,6 +81,15 @@ async fn favicon_ico() -> impl IntoResponse {
 }
 
 #[axum::debug_handler]
+async fn siteicon_png() -> impl IntoResponse {
+    const FAVICON: &[u8] = include_bytes!("../data/siteicon.png");
+    (
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/png")]),
+        FAVICON,
+    )
+}
+
+#[axum::debug_handler]
 async fn external_png() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/external.png");
     (
@@ -151,7 +160,7 @@ async fn run_server() -> Result<()> {
         .route("/main.css", get(main_css))
         .route("/geohack.php", get(geohack))
         .route("/favicon.ico", get(favicon_ico))
-        .route("/geohack/siteicon.png", get(favicon_ico))
+        .route("/geohack/siteicon.png", get(siteicon_png))
         .route("/bullet.gif", get(bullet_gif))
         .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
