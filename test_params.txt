@@ -10,7 +10,6 @@ geohack.php?params=13_19_N_169_9_W_globe:Moon&title=Apollo+11+landing
 geohack.php?params=46.9_S_17.5_W_globe:ganymede_dim:2988&title=Dardanus+Sulcus+Crater
 geohack.php?params=38.89767_N_-77.03655_E_type:landmark_region:US&title=The+White+House
 geohack.php?params=51_30_28_N_0_07_41_W_type:city(7000000)_region:GB-LND&title=London
-
 geohack.php?params=35_41_N_139_46_E_type:city_region:JP-13&title=Tokyo
 geohack.php?params=55_45_8_N_37_37_56_E_region:RU_type:city(10,462,424)&title=Moscow
 geohack.php?params=35_S_149_E_type:city_region:AU-ACT_source:enwiki&title=Canberra

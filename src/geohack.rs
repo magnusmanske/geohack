@@ -724,4 +724,74 @@ mod tests {
         let expected = include_str!("../test_data/test_13.html");
         assert_eq!(html.trim(), expected.trim());
     }
+
+    #[tokio::test]
+    async fn test_14() {
+        // geohack.php?params=55_45_8_N_37_37_56_E_region:RU_type:city(10,462,424)&title=Moscow
+        let query = QueryParameters {
+            params: "55_45_8_N_37_37_56_E_region:RU_type:city(10,462,424)".to_string(),
+            title: Some("Moscow".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_14.html", html).unwrap();
+        let expected = include_str!("../test_data/test_14.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_15() {
+        // geohack.php?params=35_S_149_E_type:city_region:AU-ACT_source:enwiki&title=Canberra
+        let query = QueryParameters {
+            params: "35_S_149_E_type:city_region:AU-ACT_source:enwiki".to_string(),
+            title: Some("Canberra".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_15.html", html).unwrap();
+        let expected = include_str!("../test_data/test_15.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_16() {
+        // geohack.php?params=61_10_N_23_52_E_type:city(14000)_region:FI-LS&title=Akaa+%28Finland%29
+        let query = QueryParameters {
+            params: "61_10_N_23_52_E_type:city(14000)_region:FI-LS".to_string(),
+            title: Some("Akaa (Finland)".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_16.html", html).unwrap();
+        let expected = include_str!("../test_data/test_16.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_17() {
+        // geohack.php?params=46_10_N_8_7_E_type:city(127)_region:CH-VS_source:enwiki&title=Zwischbergen+%28Switzerland%29
+        let query = QueryParameters {
+            params: "46_10_N_8_7_E_type:city(127)_region:CH-VS_source:enwiki".to_string(),
+            title: Some("Zwischbergen (Switzerland)".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_17.html", html).unwrap();
+        let expected = include_str!("../test_data/test_17.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
+
+    #[tokio::test]
+    async fn test_18() {
+        // geohack.php?params=36_51_S_174_47_E_type:city_region:NZ_source:enwiki&title=Auckland
+        let query = QueryParameters {
+            params: "36_51_S_174_47_E_type:city_region:NZ_source:enwiki".to_string(),
+            title: Some("Auckland".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_18.html", html).unwrap();
+        let expected = include_str!("../test_data/test_18.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
 }
