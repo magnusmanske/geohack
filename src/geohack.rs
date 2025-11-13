@@ -76,8 +76,11 @@ impl GeoHack {
     /// Fix language code
     pub fn fix_language_code(&self, lang: &str, default: &str) -> String {
         let lang = lang.trim().to_lowercase();
-        let re = Regex::new(r"^([\-a-z]+)").unwrap();
-        if let Some(captures) = re.captures(&lang) {
+        lazy_static! {
+            static ref RE_FIX_LANGUAGE_CODE: Regex =
+                Regex::new(r"^([\-a-z]+)").expect("Invalid regex pattern");
+        }
+        if let Some(captures) = RE_FIX_LANGUAGE_CODE.captures(&lang) {
             captures
                 .get(1)
                 .map_or(default.to_string(), |m| m.as_str().to_string())

@@ -116,12 +116,12 @@ impl MapSources {
         //
         //  Default scale
         //
-        let scale = attr
+        let scale_int = attr
             .get("scale")
             .and_then(|s| s.parse::<i32>().ok())
             .unwrap_or(0);
 
-        if scale <= 0 {
+        if scale_int <= 0 {
             let mut default = attr
                 .get("default")
                 .and_then(|d| d.parse::<i32>().ok())
@@ -177,7 +177,7 @@ impl MapSources {
             attr.insert("scale".to_string(), default.to_string());
         }
 
-        let scale = attr
+        let scale_float = attr
             .get("scale")
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(300000.0);
@@ -211,8 +211,8 @@ impl MapSources {
          *  2 is approx 1:8,570,000
          *  0 is minimum
          */
-        let zoom = if scale > 0.0 {
-            (18.0 - scale.ln()) as i32
+        let zoom = if scale_float > 0.0 {
+            (18.0 - scale_float.ln()) as i32
         } else {
             9
         }
@@ -224,8 +224,8 @@ impl MapSources {
          *  n-1 is half of n
          *  2 (min) is about 1:111,000,000
          */
-        let osmzoom = if scale > 0.0 {
-            18 - ((scale.log2() - 1693_f64.log2()).round() as i32)
+        let osmzoom = if scale_float > 0.0 {
+            18 - ((scale_float.log2() - 1693_f64.log2()).round() as i32)
         } else {
             12
         }
@@ -236,42 +236,42 @@ impl MapSources {
          *  instead of a scale:
          *  143 == 1:1000000 scale
          */
-        let altitude = ((scale * 143.0 / 1000000.0) as i32).max(1);
+        let altitude = ((scale_float * 143.0 / 1000000.0) as i32).max(1);
 
         /*
          * Tiger and Google uses a span
          * FIXME calibration
          * 1.0 for 1:1000000
          */
-        let span = scale * 1.0 / 1000000.0;
+        let span = scale_float * 1.0 / 1000000.0;
 
         /*
          * Multimap has a fixed set of scales
          * and will choke unless one of them are specified
          */
-        let mmscale = if scale >= 30000000.0 {
+        let mmscale = if scale_float >= 30000000.0 {
             40000000
-        } else if scale >= 14000000.0 {
+        } else if scale_float >= 14000000.0 {
             20000000
-        } else if scale >= 6300000.0 {
+        } else if scale_float >= 6300000.0 {
             10000000
-        } else if scale >= 2800000.0 {
+        } else if scale_float >= 2800000.0 {
             4000000
-        } else if scale >= 1400000.0 {
+        } else if scale_float >= 1400000.0 {
             2000000
-        } else if scale >= 700000.0 {
+        } else if scale_float >= 700000.0 {
             1000000
-        } else if scale >= 310000.0 {
+        } else if scale_float >= 310000.0 {
             500000
-        } else if scale >= 140000.0 {
+        } else if scale_float >= 140000.0 {
             200000
-        } else if scale >= 70000.0 {
+        } else if scale_float >= 70000.0 {
             100000
-        } else if scale >= 35000.0 {
+        } else if scale_float >= 35000.0 {
             50000
-        } else if scale >= 15000.0 {
+        } else if scale_float >= 15000.0 {
             25000
-        } else if scale >= 7000.0 {
+        } else if scale_float >= 7000.0 {
             10000
         } else {
             5000
@@ -448,7 +448,7 @@ impl MapSources {
             osgb36.easting.round().to_string(),
             ch1903.northing.round().to_string(),
             ch1903.easting.round().to_string(),
-            scale.to_string(),
+            scale_float.to_string(),
             mmscale.to_string(),
             altitude.to_string(),
             zoom.to_string(),

@@ -118,7 +118,6 @@ async fn geohack(
         .get("referer")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    println!("{query:#?}");
     let mut geohack = GeoHack::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     geohack
         .init_from_query(query.clone())
@@ -164,8 +163,8 @@ async fn run_server() -> Result<()> {
         Err(_) => 8000,
     };
 
-    let address = [0, 0, 0, 0]; // TODOO env::var("AC2WD_ADDRESS")
-    println!("Starting server on http://localhost:{}", port);
+    let address = [0, 0, 0, 0]; // TODOO env::var("GEOHACK_ADDRESS")
+    tracing::info!("Starting server on http://localhost:{}", port);
 
     let addr = SocketAddr::from((address, port));
     tracing::debug!("listening on {}", addr);

@@ -67,10 +67,10 @@ impl Templates {
         }
 
         // Fallback
-        let request_url = format!(
+        let request_url_fallback = format!(
             "http://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
-        let response = client.get(&request_url).send().await?;
+        let response = client.get(&request_url_fallback).send().await?;
         let html = response.text().await?;
         self.set_template(&caching_key, &html).await?;
         Ok(html)

@@ -126,7 +126,7 @@ impl TransverseMercator {
      *  \return false if problems
      */
     pub fn lat_lon_zone_to_utm(&mut self, latitude: f64, longitude: f64, zone: &str) -> bool {
-        self.lat_lon_origin_to_tm(latitude, longitude, 0.0, self.utmzone_origin(zone))
+        self.lat_lon_origin_to_tm(latitude, longitude, 0.0, Self::utmzone_origin(zone))
     }
 
     /**
@@ -241,7 +241,7 @@ impl TransverseMercator {
         }
     */
 
-    fn utmzone_origin(&self, zone: &str) -> f64 {
+    fn utmzone_origin(zone: &str) -> f64 {
         let zone_num = zone
             .chars()
             .take_while(|c| c.is_ascii_digit())
@@ -263,7 +263,7 @@ impl TransverseMercator {
                 - (35.0 * e * e * e / 3072.0) * (6.0 * lat_rad).sin())
     }
 
-    fn deg2rad(&self, deg: f64) -> f64 {
+    fn deg2rad(deg: f64) -> f64 {
         (PI / 180.0) * deg
     }
 
@@ -287,7 +287,7 @@ impl TransverseMercator {
 
         let longitude2 = longitude - ((longitude + 180.0) / 360.0).floor() * 360.0;
 
-        let lat_rad = self.deg2rad(latitude);
+        let lat_rad = Self::deg2rad(latitude);
 
         let e = self.eccentricity;
         let e_prime_sq = e / (1.0 - e);
@@ -295,11 +295,11 @@ impl TransverseMercator {
         let v = self.radius / (1.0 - e * lat_rad.sin() * lat_rad.sin()).sqrt();
         let t_val = lat_rad.tan().powi(2);
         let c = e_prime_sq * lat_rad.cos().powi(2);
-        let a = self.deg2rad(longitude2 - longitude_origin) * lat_rad.cos();
+        let a = Self::deg2rad(longitude2 - longitude_origin) * lat_rad.cos();
         let m = self.find_m(lat_rad);
 
         let m0 = if latitude_origin != 0.0 {
-            self.find_m(self.deg2rad(latitude_origin))
+            self.find_m(Self::deg2rad(latitude_origin))
         } else {
             0.0
         };
@@ -409,12 +409,12 @@ mod tests {
         let tm = TransverseMercator::default();
 
         // Test standard zone calculation
-        let zone = tm.lat_lon_to_utm_zone(40.0, -74.0);
-        assert!(zone.starts_with("18"));
+        let zone1 = tm.lat_lon_to_utm_zone(40.0, -74.0);
+        assert!(zone1.starts_with("18"));
 
         // Test equator
-        let zone = tm.lat_lon_to_utm_zone(0.0, 0.0);
-        assert!(zone.starts_with("31"));
+        let zone2 = tm.lat_lon_to_utm_zone(0.0, 0.0);
+        assert!(zone2.starts_with("31"));
     }
 
     #[test]
@@ -442,14 +442,14 @@ mod tests {
         let mut tm = TransverseMercator::default();
 
         // Test Swiss coordinates (Bern)
-        let result = tm.lat_lon_to_ch1903(46.9480, 7.4474);
-        assert!(result);
+        let result1 = tm.lat_lon_to_ch1903(46.9480, 7.4474);
+        assert!(result1);
         assert!(tm.northing > 0.0);
         assert!(tm.easting > 0.0);
 
         // Test out of range
-        let result = tm.lat_lon_to_ch1903(50.0, 0.0);
-        assert!(!result);
+        let result2 = tm.lat_lon_to_ch1903(50.0, 0.0);
+        assert!(!result2);
     }
 
     #[test]
@@ -457,10 +457,9 @@ mod tests {
         fn rad2deg(rad: f64) -> f64 {
             rad * (180.0 / PI)
         }
-        let tm = TransverseMercator::default();
 
         let deg = 45.0;
-        let rad = tm.deg2rad(deg);
+        let rad = TransverseMercator::deg2rad(deg);
         let back = rad2deg(rad);
 
         assert!((deg - back).abs() < 1e-10);
