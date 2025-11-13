@@ -51,7 +51,7 @@ use axum::{
     Router,
     extract::{Query, State},
     http::HeaderMap,
-    response::Html,
+    response::{AppendHeaders, Html, IntoResponse},
     routing::get,
 };
 use reqwest::StatusCode;
@@ -64,15 +64,36 @@ struct AppState {
 }
 
 #[axum::debug_handler]
-async fn main_css() -> String {
-    include_str!("../data/main.css").to_string()
+async fn main_css() -> impl IntoResponse {
+    (
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "text/css")]),
+        include_str!("../data/main.css").to_string(),
+    )
 }
 
 #[axum::debug_handler]
-async fn favicon_ico() -> impl axum::response::IntoResponse {
+async fn favicon_ico() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/favicon.ico");
     (
-        axum::response::AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/x-icon")]),
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/x-icon")]),
+        FAVICON,
+    )
+}
+
+#[axum::debug_handler]
+async fn external_png() -> impl IntoResponse {
+    const FAVICON: &[u8] = include_bytes!("../data/external.png");
+    (
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/png")]),
+        FAVICON,
+    )
+}
+
+#[axum::debug_handler]
+async fn bullet_gif() -> impl IntoResponse {
+    const FAVICON: &[u8] = include_bytes!("../data/bullet.gif");
+    (
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/gif")]),
         FAVICON,
     )
 }
@@ -121,6 +142,8 @@ async fn run_server() -> Result<()> {
         .route("/geohack.php", get(geohack))
         .route("/favicon.ico", get(favicon_ico))
         .route("/geohack/siteicon.png", get(favicon_ico))
+        .route("/bullet.gif", get(bullet_gif))
+        .route("/external.png", get(external_png))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         //        .layer(cors),

@@ -186,17 +186,7 @@ impl GeoHack {
     fn detect_region_zoom_globe(&mut self) {
         for v in self.map_sources.p.pieces() {
             if let Some(end) = v.strip_prefix("region:") {
-                let mut region = end.to_uppercase();
-                // Process region name
-                if let Some(pos) = region.find('-') {
-                    region = region[..pos].to_string();
-                }
-                if let Some(pos) = region.find('_') {
-                    region = region[..pos].to_string();
-                }
-                if !region.trim().is_empty() {
-                    self.region_name = Some(region);
-                }
+                self.region_name = Self::process_region_name(end);
             } else if let Some(end) = v.strip_prefix("globe:") {
                 self.globe = end.to_lowercase();
             } else if let Some(end) = v.strip_prefix("zoom:") {
@@ -279,12 +269,16 @@ Waarschuwing:
             logo_url
         ));
 
+        html.push_str(&self.actions);
+
         // Add languages section placeholder
         html.push_str(
             r#"
 <!-- languages -->
     "#,
         );
+
+        html.push_str(&self.languages);
 
         // Add footer
         html.push_str(r#"
@@ -396,6 +390,9 @@ Waarschuwing:
         theparams: &str,
         r_pagename: &str,
     ) -> String {
+        // Fix old geohack links in template
+        page = page.replace("https://geohack.toolforge.org/geohack.php?", "?");
+
         // <?php
         // $page = str_replace ( ' href="/w' , " href=\"//{$lang}.wikipedia.org/w" , $page ) ;
         page = Self::str_replace(
@@ -512,6 +509,22 @@ Waarschuwing:
         }
 
         page
+    }
+
+    fn process_region_name(end: &str) -> Option<String> {
+        let mut region = end.to_uppercase();
+        if let Some(pos) = region.find('-') {
+            region = region[..pos].to_string();
+        }
+        if let Some(pos) = region.find('_') {
+            region = region[..pos].to_string();
+        }
+        region = region.trim().to_string();
+        if !region.is_empty() {
+            Some(region)
+        } else {
+            None
+        }
     }
 }
 
