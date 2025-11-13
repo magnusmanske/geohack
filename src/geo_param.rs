@@ -318,7 +318,7 @@ impl GeoParam {
 }
 
 /// Result structure for make_minsec function
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct MinSecResult {
     pub deg: f64,
     pub min: f64,

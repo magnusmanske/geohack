@@ -132,7 +132,9 @@ async fn geohack(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     geohack.set_page_content(&template_content);
-    let html = geohack.process();
+    let html = geohack
+        .process()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Html(html))
 }

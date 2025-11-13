@@ -340,9 +340,9 @@ Waarschuwing:
     }
 
     /// Process the template and build final output
-    pub fn process(&mut self) -> String {
+    pub fn process(&mut self) -> Result<String> {
         // Build the map sources output
-        let processed_content = self.map_sources.build_output(&self.pagename, &self.title);
+        let processed_content = self.map_sources.build_output(&self.pagename, &self.title)?;
 
         // Apply ugly hacks
         let processed_content = processed_content
@@ -365,7 +365,7 @@ Waarschuwing:
         }
 
         self.page_content = final_content;
-        self.build_output()
+        Ok(self.build_output())
     }
 
     fn fix_wikipedia_html(&mut self) {
@@ -542,8 +542,7 @@ mod tests {
         let globe = geohack.globe.trim().to_ascii_lowercase();
         let template_content = templates.load(&language, &globe, &query).await?;
         geohack.set_page_content(&template_content);
-        let html = geohack.process();
-        Ok(html)
+        geohack.process()
     }
 
     #[tokio::test]
