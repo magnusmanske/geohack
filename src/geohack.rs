@@ -4,7 +4,7 @@
  * Converted to Rust 2005 by <Magnus Manske> <magnusmanske@googlemail.com>
 */
 use crate::map_sources::MapSources;
-use crate::{QueryParameters, geo_param::GeoParam};
+use crate::{geo_param::GeoParam, query_parameters::QueryParameters};
 use anyhow::{Result, anyhow};
 use html_escape;
 use lazy_static::lazy_static;

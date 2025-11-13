@@ -1,4 +1,3 @@
-use crate::QueryParameters;
 use anyhow::Result;
 use std::{
     collections::HashMap,
@@ -6,6 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::RwLock;
+
+use crate::query_parameters::QueryParameters;
 
 const HTTP_USER_AGENT: &str = "GeoHack/2.0";
 const CACHE_DURATION: u64 = 60 * 60;

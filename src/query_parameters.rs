@@ -17,6 +17,7 @@ pub struct QueryParameters {
     pub project: Option<String>,
     pub title: Option<String>,
     pub sandbox: Option<u8>,
+    pub purge: Option<u8>,
     pub http_referrer: Option<String>,
 }
 
@@ -35,7 +36,13 @@ impl QueryParameters {
         }
     }
 
+    /// Using a sandbox page?
     pub fn sandbox(&self) -> bool {
         self.sandbox == Some(1)
+    }
+
+    /// Purge cache if requested by user, or if a sandbox is used
+    pub fn purge(&self) -> bool {
+        self.purge == Some(1) || self.sandbox()
     }
 }
