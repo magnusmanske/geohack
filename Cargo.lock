@@ -364,6 +364,7 @@ dependencies = [
  "anyhow",
  "axum",
  "html-escape",
+ "lazy_static",
  "regex",
  "reqwest",
  "serde",

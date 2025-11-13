@@ -155,7 +155,7 @@ impl TransverseMercator {
         let grid_x = (self.easting / 100000.0).floor() as i32;
         let grid_y = (self.northing / 100000.0).floor() as i32;
 
-        if grid_x < 0 || grid_x > 6 || grid_y < 0 || grid_y > 12 {
+        if !(0..=6).contains(&grid_x) || !(0..=12).contains(&grid_y) {
             /* outside area for OSGB36 */
             return String::new();
         }
@@ -280,7 +280,7 @@ impl TransverseMercator {
         latitude_origin: f64,
         longitude_origin: f64,
     ) -> bool {
-        if longitude < -180.0 || longitude > 180.0 || latitude < -80.0 || latitude > 84.0 {
+        if !(-180.0..=180.0).contains(&longitude) || !(-80.0..=84.0).contains(&latitude) {
             // UTM not defined in this range
             return false;
         }

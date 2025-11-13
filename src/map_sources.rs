@@ -105,11 +105,11 @@ impl MapSources {
         //
         if !attr.contains_key("scale") && attr.contains_key("zoom") {
             // Incompatible with {zoom} and {osmzoom}
-            if let Some(zoom) = attr.get("zoom") {
-                if let Ok(zoom_val) = zoom.parse::<f64>() {
-                    let scale = 2_f64.powf(12.0 - zoom_val) * 100000.0;
-                    attr.insert("scale".to_string(), scale.to_string());
-                }
+            if let Some(zoom) = attr.get("zoom")
+                && let Ok(zoom_val) = zoom.parse::<f64>()
+            {
+                let scale = 2_f64.powf(12.0 - zoom_val) * 100000.0;
+                attr.insert("scale".to_string(), scale.to_string());
             }
         }
 
@@ -154,10 +154,10 @@ impl MapSources {
                 .cloned()
                 .collect();
 
-                if let Some(type_attr) = attr.get("type") {
-                    if let Some(&scale_val) = default_scale.get(type_attr.as_str()) {
-                        default = scale_val;
-                    }
+                if let Some(type_attr) = attr.get("type")
+                    && let Some(&scale_val) = default_scale.get(type_attr.as_str())
+                {
+                    default = scale_val;
                 }
 
                 // FIXME: Scale according to city size, if available

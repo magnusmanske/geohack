@@ -3,26 +3,29 @@
  * Released under GPL
  * Converted to Rust 2005 by <Magnus Manske> <magnusmanske@googlemail.com>
 */
-use crate::geo_param::GeoParam;
 use crate::map_sources::MapSources;
+use crate::{GehohackParameters, geo_param::GeoParam};
 use anyhow::{Result, anyhow};
 use html_escape;
+use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
 use urlencoding;
 
 /// Main GeoHack application struct
 pub struct GeoHack {
-    lang: String,
+    pub lang: String,
     params: String,
     pagename: String,
     title: String,
     map_sources: MapSources,
     region_name: Option<String>,
-    globe: String,
+    pub globe: String,
     nlzoom: String,
     page_content: String,
     logo_urls: HashMap<String, String>,
+    actions: String,
+    languages: String,
 }
 
 impl GeoHack {
@@ -39,6 +42,8 @@ impl GeoHack {
             nlzoom: String::new(),
             page_content: String::new(),
             logo_urls: Self::init_logo_urls(),
+            actions: String::new(),
+            languages: String::new(),
         })
     }
 
@@ -56,13 +61,15 @@ impl GeoHack {
         default: &str,
     ) -> String {
         if let Some(value) = params.get(key) {
-            let ret = value.replace("\\'", "'");
-            // Prevent JS injection
-            let re = Regex::new(r"<script.+</script>").unwrap();
-            re.replace_all(&ret, "").to_string()
+            Self::sanitize_html(value)
         } else {
             default.to_string()
         }
+    }
+
+    fn sanitize_html(html: &str) -> String {
+        let re = Regex::new(r"<script.+</script>").unwrap();
+        re.replace_all(&html.replace("\\'", "'"), "").to_string()
     }
 
     /// Fix language code
@@ -137,12 +144,11 @@ impl GeoHack {
         }
     }
 
-    /// Initialize with request parameters
-    // TODO: Convert to axum request?
-    pub fn init_from_request(&mut self, params: &HashMap<String, String>) -> Result<()> {
-        // Get everything we need to run
-        self.lang = self.fix_language_code(&self.get_request(params, "language", "en"), "");
-        self.params = html_escape::encode_text(&self.get_request(params, "params", "")).to_string();
+    pub fn init_from_query(&mut self, query: GehohackParameters) -> Result<()> {
+        let lang = Self::sanitize_html(&query.language.unwrap_or("en".to_string()));
+        let params = Self::sanitize_html(&query.params);
+        self.lang = self.fix_language_code(&lang, "");
+        self.params = html_escape::encode_text(&params).to_string();
 
         if self.params.is_empty() {
             return Err(anyhow!(
@@ -151,7 +157,7 @@ impl GeoHack {
         }
 
         // Using REFERER as a last resort for pagename
-        let referer = params.get("HTTP_REFERER").unwrap_or(&String::new()).clone();
+        let referer = query.http_referrer.unwrap_or_default().clone();
         let re =
             Regex::new(r"https?://[^/]+/?(?:wiki/|w/index.php\?.*?title=)([^&?#{}\[\]]+)").unwrap();
         let ref_match = re.captures(&referer);
@@ -163,48 +169,39 @@ impl GeoHack {
             String::new()
         };
 
-        self.pagename =
-            html_escape::encode_text(&self.get_request(params, "pagename", &default_pagename))
-                .to_string();
-        self.title = html_escape::encode_text(&self.get_request(
-            params,
-            "title",
-            &self.pagename.replace('_', " "),
-        ))
-        .to_string();
+        let pagename = Self::sanitize_html(&query.pagename.unwrap_or(default_pagename));
+        self.pagename = html_escape::encode_text(&pagename).to_string();
+
+        let title = Self::sanitize_html(&query.title.unwrap_or(self.pagename.replace('_', " ")));
+        self.title = html_escape::encode_text(&title).to_string();
 
         // Initialize Map Sources
         self.map_sources = MapSources::new(&self.params, None, None)?; // TODO params, language
 
         self.detect_region_zoom_globe();
-
         Ok(())
     }
 
     /// Detect region from parameters
     fn detect_region_zoom_globe(&mut self) {
-        let mut region_name = None;
-
-        let pieces = self.map_sources.p.pieces();
-        for v in pieces {
+        for v in self.map_sources.p.pieces() {
             if let Some(end) = v.strip_prefix("region:") {
-                region_name = Some(end.to_uppercase());
+                let mut region = end.to_uppercase();
+                // Process region name
+                if let Some(pos) = region.find('-') {
+                    region = region[..pos].to_string();
+                }
+                if let Some(pos) = region.find('_') {
+                    region = region[..pos].to_string();
+                }
+                if !region.trim().is_empty() {
+                    self.region_name = Some(region);
+                }
             } else if let Some(end) = v.strip_prefix("globe:") {
                 self.globe = end.to_lowercase();
             } else if let Some(end) = v.strip_prefix("zoom:") {
                 self.nlzoom = end.to_lowercase();
             }
-        }
-
-        if let Some(mut region) = region_name {
-            // Process region name
-            if let Some(pos) = region.find('-') {
-                region = region[..pos].to_string();
-            }
-            if let Some(pos) = region.find('_') {
-                region = region[..pos].to_string();
-            }
-            self.region_name = Some(region);
         }
     }
 
@@ -321,7 +318,8 @@ Waarschuwing:
     /// Set page content from template
     pub fn set_page_content(&mut self, content: &str) {
         self.page_content = content.to_string();
-        self.map_sources.thetext = content.to_string();
+        self.fix_wikipedia_html();
+        self.map_sources.thetext = self.page_content.clone();
     }
 
     /// Process the template and build final output
@@ -351,6 +349,169 @@ Waarschuwing:
 
         self.page_content = final_content;
         self.build_output()
+    }
+
+    fn fix_wikipedia_html(&mut self) {
+        let lang = self.lang.clone();
+        let theparams = self.params.clone();
+        let r_pagename = self.pagename.clone();
+
+        self.page_content =
+            self.process_wikipedia_page(self.page_content.clone(), &lang, &theparams, &r_pagename);
+        // println!("Processed page: {}", html);
+    }
+
+    // Helper function to simulate PHP's str_replace
+    fn str_replace(search: &str, replace: &str, subject: &str) -> String {
+        subject.replace(search, replace)
+    }
+
+    // Helper function to get a div section by ID (simulating get_div_section)
+    fn get_div_section2(page: &str, section_id: &str) -> String {
+        // This is a simplified implementation - actual implementation would depend on
+        // the original get_div_section function's logic
+        let pattern = format!(
+            r#"<div[^>]*id="{}"[^>]*>.*?</div>"#,
+            regex::escape(section_id)
+        );
+        if let Ok(re) = Regex::new(&pattern)
+            && let Some(mat) = re.find(page)
+        {
+            return mat.as_str().to_string();
+        }
+        String::new()
+    }
+
+    // Helper function to create a link (simulating make_link)
+    fn make_link2(lang: &str, theparams: &str, r_pagename: &str) -> String {
+        // Implementation would depend on the original make_link function
+        format!("/{}/{}/{}", lang, theparams, r_pagename)
+    }
+
+    // Main processing function
+    fn process_wikipedia_page(
+        &mut self,
+        mut page: String,
+        lang: &str,
+        theparams: &str,
+        r_pagename: &str,
+    ) -> String {
+        // <?php
+        // $page = str_replace ( ' href="/w' , " href=\"//{$lang}.wikipedia.org/w" , $page ) ;
+        page = Self::str_replace(
+            r#" href="/w"#,
+            &format!(r#" href="//{}.wikipedia.org/w"#, lang),
+            &page,
+        );
+
+        // $page = str_replace ( ' role="navigation"' , '' , $page ) ;
+        page = Self::str_replace(r#" role="navigation""#, "", &page);
+
+        // $page = str_replace ( ' class="portlet"' , '' , $page ) ;
+        page = Self::str_replace(r#" class="portlet""#, "", &page);
+
+        // $actions = str_replace ( 'id="p-cactions"', '', get_div_section ( $page, "p-cactions" ) ) ;
+        let actions_section = Self::get_div_section2(&page, "p-cactions");
+        self.actions = Self::str_replace(r#"id="p-cactions""#, "", &actions_section);
+
+        // $languages = preg_replace_callback ( '/ href="(https*:)\/\/([a-z\-]+){0,1}\.wikipedia\.org\/wiki\/[^"]*/', create_function(
+        //     '$match',
+        //     'global $theparams, $r_pagename; return " href=\"" . make_link ( $match[2] , $theparams , $r_pagename );'
+        // ), get_div_section ( $page, "p-lang" ) ) ;
+        let lang_section = Self::get_div_section2(&page, "p-lang");
+        self.languages = {
+            lazy_static! {
+                static ref RE: Regex =
+                    Regex::new(r#" href="(https?:)//([a-z\-]+)?\.wikipedia\.org/wiki/[^"]*"#)
+                        .unwrap();
+            }
+
+            let theparams_clone = theparams.to_string();
+            let r_pagename_clone = r_pagename.to_string();
+
+            RE.replace_all(&lang_section, |caps: &regex::Captures| {
+                let lang_match = caps.get(2).map_or("", |m| m.as_str());
+                format!(
+                    r#" href="{}""#,
+                    Self::make_link2(lang_match, &theparams_clone, &r_pagename_clone)
+                )
+            })
+            .to_string()
+        };
+
+        // # Remove edit links
+        // do {
+        //     $op = $page ;
+        //     $p = explode ( '<span class="editsection"' , $page , 2 ) ;
+        //     if ( count ( $p ) == 1 ) continue ;
+        //     $page = array_shift ( $p ) ;
+        //     $p = explode ( '</span>' , array_pop ( $p ) , 2 ) ;
+        //     $page .= array_pop ( $p ) ;
+        // } while ( $op != $page ) ;
+
+        // Remove edit links - loop until no more editsection spans are found
+        loop {
+            let original_page = page.clone();
+
+            if let Some(pos) = page.find(r#"<span class="editsection""#) {
+                let (before, after) = page.split_at(pos);
+                let (before, after) = (before.to_string(), after.to_string());
+                page = before.to_string();
+
+                // Find the closing </span> tag
+                if let Some(end_pos) = after.find("</span>") {
+                    // Skip past the </span> tag
+                    page.push_str(&after[end_pos + 7..]);
+                } else {
+                    // If no closing tag found, restore original and break
+                    page = original_page;
+                    break;
+                }
+            } else {
+                // No more editsection spans found
+                break;
+            }
+
+            // Check if page hasn't changed (equivalent to $op != $page)
+            if original_page == page {
+                break;
+            }
+        }
+
+        // # Build the page
+        // if ( strpos ( $page , '<!-- start content -->' ) ) {
+        //     $arr = explode ( '<!-- start content -->' , $page , 2 );
+        //     $page = array_pop ( $arr ) ;
+        //     $arr = explode ( '<!-- end content -->' , $page , 2 );
+        //     $page = array_shift ( $arr ) ;
+        // } else {
+        //     $page = array_pop ( explode ( '<!-- bodytext -->' , $page , 2 ) ) ;
+        //     $page = array_shift ( explode ( '<!-- /bodytext -->' , $page , 2 ) ) ;
+        // }
+
+        // Build the page - extract content between markers
+        if page.contains("<!-- start content -->") {
+            // Split by start content marker and take the second part
+            if let Some(pos) = page.find("<!-- start content -->") {
+                page = page[pos + 22..].to_string(); // 22 is the length of "<!-- start content -->"
+
+                // Split by end content marker and take the first part
+                if let Some(end_pos) = page.find("<!-- end content -->") {
+                    page = page[..end_pos].to_string();
+                }
+            }
+        } else {
+            // Alternative: use bodytext markers
+            if let Some(pos) = page.find("<!-- bodytext -->") {
+                page = page[pos + 17..].to_string(); // 17 is the length of "<!-- bodytext -->"
+
+                if let Some(end_pos) = page.find("<!-- /bodytext -->") {
+                    page = page[..end_pos].to_string();
+                }
+            }
+        }
+
+        page
     }
 }
 
