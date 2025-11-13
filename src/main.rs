@@ -99,6 +99,15 @@ async fn bullet_gif() -> impl IntoResponse {
 }
 
 #[axum::debug_handler]
+async fn lock_icon_gif() -> impl IntoResponse {
+    const FAVICON: &[u8] = include_bytes!("../data/lock_icon.gif");
+    (
+        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/gif")]),
+        FAVICON,
+    )
+}
+
+#[axum::debug_handler]
 async fn geohack(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -143,6 +152,7 @@ async fn run_server() -> Result<()> {
         .route("/favicon.ico", get(favicon_ico))
         .route("/geohack/siteicon.png", get(favicon_ico))
         .route("/bullet.gif", get(bullet_gif))
+        .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())

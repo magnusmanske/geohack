@@ -640,4 +640,18 @@ mod tests {
         let expected = include_str!("../test_data/test_7.html");
         assert_eq!(html.trim(), expected.trim());
     }
+
+    #[tokio::test]
+    async fn test_8() {
+        // geohack.php?params=9.3_S_322_W_globe:Mars&title=Dawes+Crater%2C+Sinus+Sabaeus+quadrangle
+        let query = QueryParameters {
+            params: "9.3_S_322_W_globe:Mars".to_string(),
+            title: Some("Dawes Crater, Sinus Sabaeus quadrangle".to_string()),
+            ..Default::default()
+        };
+        let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_8.html", html).unwrap();
+        let expected = include_str!("../test_data/test_8.html");
+        assert_eq!(html.trim(), expected.trim());
+    }
 }
