@@ -76,6 +76,12 @@ async fn index() -> Html<String> {
 }
 
 #[axum::debug_handler]
+async fn testcases_html() -> Html<String> {
+    let html = include_str!("../data/testcases.html").to_string();
+    Html(html)
+}
+
+#[axum::debug_handler]
 async fn geohack(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -125,6 +131,7 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
         .route("/bullet.gif", get(bullet_gif))
         .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
+        .route("/testcases.html", get(testcases_html))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         //        .layer(cors),
