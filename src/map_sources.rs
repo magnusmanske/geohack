@@ -1,3 +1,4 @@
+use crate::coordinate_group::CoordinateGroup;
 /** \file
  *
  *  Create a page which link to other map resources by adding the facility
@@ -28,117 +29,11 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-use crate::geo_param::{GeoParam, MinSecResult};
-use crate::traverse_mercator::{CH1903, OSGB36, TransverseMercator};
+use crate::geo_param::GeoParam;
+use crate::misc_map_source_values::MiscMapSourceValues;
+use crate::transverse_mercator_forms::TransverseMercatorForms;
 use anyhow::Result;
 use std::collections::HashMap;
-
-#[derive(Debug, Clone, Default)]
-struct CoordinateGroup {
-    lat: MinSecResult,
-    lon: MinSecResult,
-    latdegint: String,
-    londegint: String,
-    latdeground: String,
-    londeground: String,
-    latdeg_outer_abs: i32,
-    londeg_outer_abs: i32,
-    longantipodes: f64,
-}
-
-impl CoordinateGroup {
-    fn new(p: &GeoParam) -> Self {
-        // Make minutes and seconds, and round
-        let lat = GeoParam::make_minsec(p.latdeg());
-        let lon = GeoParam::make_minsec(p.londeg());
-
-        // Hack for negative, small degrees
-        let latdegint = if p.latdeg() < 0.0 && lat.deg as i32 == 0 {
-            "-0".to_string()
-        } else {
-            (lat.deg as i32).to_string()
-        };
-
-        let londegint = if p.londeg() < 0.0 && lon.deg as i32 == 0 {
-            "-0".to_string()
-        } else {
-            (lon.deg as i32).to_string()
-        };
-
-        let latdeground = if p.latdeg() < 0.0 && lat.deg.round() as i32 == 0 {
-            "-0".to_string()
-        } else {
-            lat.deg.round().to_string()
-        };
-
-        let londeground = if p.londeg() < 0.0 && lon.deg.round() as i32 == 0 {
-            "-0".to_string()
-        } else {
-            lon.deg.round().to_string()
-        };
-
-        let latdeg_outer_abs = lat.deg.abs().ceil() as i32;
-        let londeg_outer_abs = lon.deg.abs().ceil() as i32;
-
-        let longantipodes = if lon.deg > 0.0 {
-            lon.deg - 180.0
-        } else {
-            lon.deg + 180.0
-        };
-        Self {
-            lat,
-            lon,
-            latdegint,
-            londegint,
-            latdeground,
-            londeground,
-            latdeg_outer_abs,
-            londeg_outer_abs,
-            longantipodes,
-        }
-    }
-}
-
-struct TransverseMercatorForms {
-    utm: TransverseMercator,
-    utm33: TransverseMercator,
-    osgb36: OSGB36,
-    osgb36ref: String,
-    ch1903: CH1903,
-}
-
-impl TransverseMercatorForms {
-    fn new(p: &GeoParam) -> Self {
-        /*
-         *  Convert coordinates to various Transverse Mercator forms
-         */
-
-        /* standard UTM */
-        let mut utm = TransverseMercator::default();
-        utm.lat_lon_to_utm(p.latdeg(), p.londeg());
-        utm.zone = utm.lat_lon_to_utm_zone(p.latdeg(), p.londeg());
-
-        /* fixed UTM as used by iNatur */
-        let mut utm33 = TransverseMercator::default();
-        utm33.lat_lon_zone_to_utm(p.latdeg(), p.londeg(), "33V");
-
-        /*  UK National Grid, see http://www.gps.gov.uk/guide7.asp
-         *  central meridian 47N 2W, offset 100km N 400km W */
-        let mut osgb36 = OSGB36::default();
-        let osgb36ref = osgb36.lat_lon_to_osgb36(p.latdeg(), p.londeg());
-
-        /* Swiss traditional national grid */
-        let mut ch1903 = CH1903::default();
-        ch1903.lat_lon_to_ch1903(p.latdeg(), p.londeg());
-        Self {
-            utm,
-            utm33,
-            osgb36,
-            osgb36ref,
-            ch1903,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct MapSources {
@@ -164,135 +59,65 @@ impl MapSources {
 
     pub fn build_output(&mut self, r_pagename: &str, r_title: &str) -> Result<String> {
         let mut attr = self.p.get_attr();
-
         Self::scale_dim(&mut attr);
         Self::scale_zoom(&mut attr);
         self.default_scale(&mut attr);
 
-        let scale_float = Self::get_scale_float(&attr);
         let tmf = TransverseMercatorForms::new(&self.p);
-        let zoom = Self::get_zoom(scale_float);
-        let osmzoom = Self::get_osmzoom(scale_float);
-        let altitude = Self::get_altitude(scale_float);
-        let span = Self::get_scale_float_span(scale_float);
-        let mmscale = Self::get_mmscale(scale_float);
         let cg = CoordinateGroup::new(&self.p);
-        let region = self.get_region(&attr);
-
-        let ret = self.replace_in_page(
-            r_pagename,
-            r_title,
+        let scale_float = Self::get_scale_float(&attr);
+        let misc = MiscMapSourceValues {
+            r_pagename: r_pagename.to_string(),
+            r_title: r_title.to_string(),
+            scale_float: Self::get_scale_float(&attr),
+            zoom: Self::get_zoom(scale_float),
+            osmzoom: Self::get_osmzoom(scale_float),
+            altitude: Self::get_altitude(scale_float),
+            span: Self::get_scale_float_span(scale_float),
+            mmscale: Self::get_mmscale(scale_float),
+            region: self.get_region(&attr),
             attr,
-            scale_float,
-            tmf,
-            zoom,
-            osmzoom,
-            altitude,
-            span,
-            mmscale,
-            cg,
-            region,
-        )?;
+        };
+
+        let ret = self.replace_in_page(tmf, cg, misc)?;
 
         Ok(ret)
     }
 
     fn replace_in_page(
         &mut self,
-        r_pagename: &str,
-        r_title: &str,
-        attr: HashMap<String, String>,
-        scale_float: f64,
         tmf: TransverseMercatorForms,
-        zoom: i32,
-        osmzoom: i32,
-        altitude: i32,
-        span: f64,
-        mmscale: i32,
         cg: CoordinateGroup,
-        region: String,
+        misc: MiscMapSourceValues,
     ) -> Result<String> {
         let mut ret = self.thetext.clone();
-        let search: Vec<String> = serde_json::from_str(include_str!("../data/search.json"))?;
-        let pagename_gmaps = urlencoding::encode(r_pagename)
+        let pagename_gmaps = urlencoding::encode(&misc.r_pagename)
             .into_owned()
             .replace("%20", "+");
         let pagename_gmaps = urlencoding::encode(&pagename_gmaps).into_owned();
-        let replace = vec![
-            cg.lat.deg.to_string(),
-            cg.lon.deg.to_string(),
-            cg.lat.deg.abs().to_string(),
-            cg.lon.deg.abs().to_string(),
-            cg.latdeground,
-            cg.londeground,
-            cg.lat.deg.round().abs().to_string(),
-            cg.lon.deg.round().abs().to_string(),
-            cg.latdeg_outer_abs.to_string(),
-            cg.londeg_outer_abs.to_string(),
-            (-cg.lat.deg).to_string(),
-            cg.longantipodes.to_string(),
-            (-cg.lon.deg).to_string(),
-            cg.latdegint,
-            cg.londegint,
-            (cg.lat.deg.abs() as i32).to_string(),
-            (cg.lon.deg.abs() as i32).to_string(),
-            cg.lat.min.to_string(),
-            cg.lon.min.to_string(),
-            (cg.lat.min as i32).to_string(),
-            (cg.lon.min as i32).to_string(),
-            cg.lat.sec.to_string(),
-            cg.lon.sec.to_string(),
-            (cg.lat.sec as i32).to_string(),
-            (cg.lon.sec as i32).to_string(),
-            cg.lat.ns.clone(),
-            cg.lon.ew.clone(),
-            tmf.utm.zone.clone(),
-            tmf.utm.northing.round().to_string(),
-            tmf.utm.easting.round().to_string(),
-            tmf.utm33.northing.round().to_string(),
-            tmf.utm33.easting.round().to_string(),
-            tmf.osgb36ref,
-            tmf.osgb36.northing.round().to_string(),
-            tmf.osgb36.easting.round().to_string(),
-            tmf.ch1903.northing.round().to_string(),
-            tmf.ch1903.easting.round().to_string(),
-            scale_float.to_string(),
-            mmscale.to_string(),
-            altitude.to_string(),
-            zoom.to_string(),
-            osmzoom.to_string(),
-            span.to_string(),
-            attr.get("type").unwrap_or(&String::new()).clone(),
-            attr.get("region").unwrap_or(&String::new()).clone(),
-            attr.get("globe").unwrap_or(&String::new()).clone(),
-            attr.get("page").unwrap_or(&String::new()).clone(),
-            r_pagename.to_string(),
-            r_title.to_string(),
-            urlencoding::encode(r_pagename).into_owned(),
-            urlencoding::encode(r_title).into_owned(),
-            region.clone(),
-            attr.get("region")
-                .map(|r| {
-                    if r.len() >= 4 {
-                        r[4..r.len().min(12)].to_uppercase()
-                    } else {
-                        String::new()
-                    }
-                })
-                .unwrap_or_default(),
+
+        let mut rep_map: HashMap<String, String> = HashMap::new();
+        cg.add_rep_map(&mut rep_map);
+        tmf.add_rep_map(&mut rep_map);
+        misc.add_rep_map(&mut rep_map);
+        rep_map.insert(
+            "params".to_string(),
             html_escape::encode_text(&self.params.as_ref().unwrap_or(&"".to_string())).to_string(),
+        );
+        rep_map.insert(
+            "language".to_string(),
             html_escape::encode_text(&self.language).to_string(),
-            pagename_gmaps,
-        ];
-        for (i, search_str) in search.iter().map(|s| Self::quote_html(s)).enumerate() {
-            if let Some(replacement) = replace.get(i) {
-                ret = ret.replace(&search_str, replacement);
-            }
+        );
+        rep_map.insert("pagename_gmaps".to_string(), pagename_gmaps);
+
+        for (search_str, replacement) in rep_map
+            .iter()
+            .map(|(s, r)| (Self::quote_html(&format!("{{{s}}}")), r))
+        {
+            ret = ret.replace(&search_str, replacement);
         }
-        for (i, search_str) in search.iter().enumerate() {
-            if let Some(replacement) = replace.get(i) {
-                ret = ret.replace(search_str, replacement);
-            }
+        for (search_str, replacement) in rep_map.iter().map(|(s, r)| (format!("{{{s}}}"), r)) {
+            ret = ret.replace(&search_str, replacement);
         }
         Ok(ret)
     }

@@ -38,12 +38,15 @@
     // clippy::wildcard_dependencies,
     clippy::wildcard_imports
 )]
+pub mod coordinate_group;
 pub mod geo_param;
 pub mod geohack;
 pub mod map_sources;
+pub mod misc_map_source_values;
 pub mod query_parameters;
 pub mod server;
 pub mod templates;
+pub mod transverse_mercator_forms;
 pub mod traverse_mercator;
 
 use anyhow::Result;
