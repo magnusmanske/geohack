@@ -7,7 +7,7 @@ use axum::{
     response::{AppendHeaders, Html, IntoResponse},
     routing::get,
 };
-use reqwest::StatusCode;
+use reqwest::{StatusCode, header::CONTENT_TYPE};
 use std::net::SocketAddr;
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
@@ -19,7 +19,7 @@ struct AppState {
 #[axum::debug_handler]
 async fn main_css() -> impl IntoResponse {
     (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "text/css")]),
+        AppendHeaders([(CONTENT_TYPE, "text/css")]),
         include_str!("../data/main.css").to_string(),
     )
 }
@@ -27,46 +27,31 @@ async fn main_css() -> impl IntoResponse {
 #[axum::debug_handler]
 async fn favicon_ico() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/favicon.ico");
-    (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/x-icon")]),
-        FAVICON,
-    )
+    (AppendHeaders([(CONTENT_TYPE, "image/x-icon")]), FAVICON)
 }
 
 #[axum::debug_handler]
 async fn siteicon_png() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/siteicon.png");
-    (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/png")]),
-        FAVICON,
-    )
+    (AppendHeaders([(CONTENT_TYPE, "image/png")]), FAVICON)
 }
 
 #[axum::debug_handler]
 async fn external_png() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/external.png");
-    (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/png")]),
-        FAVICON,
-    )
+    (AppendHeaders([(CONTENT_TYPE, "image/png")]), FAVICON)
 }
 
 #[axum::debug_handler]
 async fn bullet_gif() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/bullet.gif");
-    (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/gif")]),
-        FAVICON,
-    )
+    (AppendHeaders([(CONTENT_TYPE, "image/gif")]), FAVICON)
 }
 
 #[axum::debug_handler]
 async fn lock_icon_gif() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/lock_icon.gif");
-    (
-        AppendHeaders([(reqwest::header::CONTENT_TYPE, "image/gif")]),
-        FAVICON,
-    )
+    (AppendHeaders([(CONTENT_TYPE, "image/gif")]), FAVICON)
 }
 
 #[axum::debug_handler]
