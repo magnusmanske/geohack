@@ -129,6 +129,7 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
         .route("/geohack.php", get(geohack))
         .route("/favicon.ico", get(favicon_ico))
         .route("/geohack/siteicon.png", get(siteicon_png))
+        .route("/siteicon.png", get(siteicon_png))
         .route("/bullet.gif", get(bullet_gif))
         .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
