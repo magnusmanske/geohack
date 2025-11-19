@@ -109,7 +109,8 @@ async fn geohack(
     geohack.set_page_content(&template_content);
     let html = geohack
         .process()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .replace("</html>", "<!-- Rust code --></html>");
 
     Ok(Html(html))
 }
