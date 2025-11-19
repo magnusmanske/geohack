@@ -3,11 +3,10 @@ use anyhow::Result;
 use axum::{
     Router,
     extract::{Query, State},
-    http::HeaderMap,
-    response::{AppendHeaders, Html, IntoResponse},
+    http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
+    response::{AppendHeaders, Html, IntoResponse, Response},
     routing::get,
 };
-use reqwest::{StatusCode, header::CONTENT_TYPE};
 use std::net::SocketAddr;
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
@@ -17,11 +16,15 @@ struct AppState {
 }
 
 #[axum::debug_handler]
-async fn main_css() -> impl IntoResponse {
-    (
-        AppendHeaders([(CONTENT_TYPE, "text/css")]),
-        include_str!("../data/main.css").to_string(),
-    )
+async fn main_css() -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, "text/css".parse().unwrap());
+    let css_content = include_str!("../data/main.css").to_string();
+    (StatusCode::OK, headers, css_content).into_response()
+    // (
+    //     AppendHeaders([(CONTENT_TYPE, "text/css")]),
+    //     include_str!("../data/main.css").to_string(),
+    // )
 }
 
 #[axum::debug_handler]
