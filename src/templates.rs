@@ -1,3 +1,4 @@
+use crate::query_parameters::QueryParameters;
 use anyhow::Result;
 use std::{
     collections::HashMap,
@@ -6,10 +7,8 @@ use std::{
 };
 use tokio::sync::RwLock;
 
-use crate::query_parameters::QueryParameters;
-
 const HTTP_USER_AGENT: &str = "GeoHack/2.0";
-const CACHE_DURATION: u64 = 60 * 60;
+const CACHE_DURATION_SEC: u64 = 60 * 60; // 1h
 
 #[derive(Debug, Clone, Default)]
 pub struct Template {
@@ -83,7 +82,7 @@ impl Templates {
             caching_key.to_string(),
             Template {
                 html: html.to_string(),
-                expires: Some(Instant::now() + Duration::from_secs(CACHE_DURATION)),
+                expires: Some(Instant::now() + Duration::from_secs(CACHE_DURATION_SEC)),
             },
         );
         Ok(())
