@@ -21,6 +21,7 @@ async fn main_css() -> Response {
     headers.insert(CONTENT_TYPE, "text/css".parse().unwrap());
     let css_content = include_str!("../data/main.css").to_string();
     (StatusCode::OK, headers, css_content).into_response()
+    // TODO: check if the short form below works
     // (
     //     AppendHeaders([(CONTENT_TYPE, "text/css")]),
     //     include_str!("../data/main.css").to_string(),
