@@ -61,11 +61,9 @@ impl GeoHack {
         key: &str,
         default: &str,
     ) -> String {
-        if let Some(value) = params.get(key) {
-            Self::sanitize_html(value)
-        } else {
-            default.to_string()
-        }
+        params
+            .get(key)
+            .map_or_else(|| default.to_string(), |value| Self::sanitize_html(value))
     }
 
     fn sanitize_html(html: &str) -> String {
@@ -80,13 +78,14 @@ impl GeoHack {
             static ref RE_FIX_LANGUAGE_CODE: Regex =
                 Regex::new(r"^([\-a-z]+)").expect("Invalid regex pattern");
         }
-        if let Some(captures) = RE_FIX_LANGUAGE_CODE.captures(&lang) {
-            captures
-                .get(1)
-                .map_or(default.to_string(), |m| m.as_str().to_string())
-        } else {
-            default.to_string()
-        }
+        RE_FIX_LANGUAGE_CODE.captures(&lang).map_or_else(
+            || default.to_string(),
+            |captures| {
+                captures
+                    .get(1)
+                    .map_or(default.to_string(), |m| m.as_str().to_string())
+            },
+        )
     }
 
     /// Get a div section from HTML
