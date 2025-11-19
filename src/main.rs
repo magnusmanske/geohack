@@ -75,3 +75,7 @@ async fn main() -> Result<()> {
 
     server::run_server(address, port).await
 }
+
+/*
+ * grafana: https://grafana.wmcloud.org/d/TJuKfnt4z/tool-dashboard?var-namespace=tool-geohack&orgId=1&from=now-24h&to=now&timezone=utc&var-cluster=P8433460076D33992
+ */
