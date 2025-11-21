@@ -19,7 +19,7 @@ pub struct Template {
 #[derive(Debug, Clone, Default)]
 pub struct Templates {
     templates: Arc<RwLock<HashMap<String, Template>>>,
-    loading: Arc<Mutex<bool>>,
+    // loading: Arc<Mutex<bool>>,
 }
 
 impl Templates {
@@ -45,7 +45,7 @@ impl Templates {
 
         // Prevent other requests from loading templates while this one is loading.
         // This should be done per key, but I can't be bothered right now.
-        let _lock = self.loading.lock().await;
+        // let _lock = self.loading.lock().await;
 
         let client = Self::get_reqwest_client()?;
 
