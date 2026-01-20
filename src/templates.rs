@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 const HTTP_USER_AGENT: &str = "GeoHack/2.0";
 const CACHE_DURATION_SEC: u64 = 60 * 60; // 1h
