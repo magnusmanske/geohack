@@ -361,10 +361,11 @@ dependencies = [
 name = "geohack"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "axum",
  "html-escape",
- "lazy_static",
+ "once_cell",
  "regex",
  "reqwest",
  "serde",

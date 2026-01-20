@@ -4,13 +4,13 @@
  * Converted to Rust 2005 by <Magnus Manske> <magnusmanske@googlemail.com>
 */
 use crate::map_sources::MapSources;
+use crate::regex_patterns::{
+    RE_FIX_LANGUAGE_CODE, RE_INIT_FROM_QUERY, RE_MAKE_LINK, RE_SANITIZE_HTML,
+    RE_WIKIPEDIA_LANG_LINK,
+};
 use crate::{geo_param::GeoParam, query_parameters::QueryParameters};
 use anyhow::{Result, anyhow};
-use html_escape;
-use lazy_static::lazy_static;
-use regex::Regex;
 use std::collections::HashMap;
-use urlencoding;
 
 /// Main GeoHack application struct
 #[derive(Debug, Clone)]
@@ -67,25 +67,18 @@ impl GeoHack {
     }
 
     fn sanitize_html(html: &str) -> String {
-        let re = Regex::new(r"<script.+</script>").unwrap();
-        re.replace_all(&html.replace("\\'", "'"), "").to_string()
+        RE_SANITIZE_HTML
+            .replace_all(&html.replace("\\'", "'"), "")
+            .to_string()
     }
 
     /// Fix language code
     pub fn fix_language_code(&self, lang: &str, default: &str) -> String {
         let lang = lang.trim().to_lowercase();
-        lazy_static! {
-            static ref RE_FIX_LANGUAGE_CODE: Regex =
-                Regex::new(r"^([\-a-z]+)").expect("Invalid regex pattern");
-        }
-        RE_FIX_LANGUAGE_CODE.captures(&lang).map_or_else(
-            || default.to_string(),
-            |captures| {
-                captures
-                    .get(1)
-                    .map_or(default.to_string(), |m| m.as_str().to_string())
-            },
-        )
+        RE_FIX_LANGUAGE_CODE
+            .captures(&lang)
+            .and_then(|captures| captures.get(1))
+            .map_or_else(|| default.to_string(), |m| m.as_str().to_string())
     }
 
     /// Get a div section from HTML
@@ -130,11 +123,7 @@ impl GeoHack {
             String::new()
         };
 
-        lazy_static! {
-            // TODO params match characters: %+
-            static ref RE_MAKE_LINK: Regex =
-                Regex::new(r"[^0-9A-Za-z_.:;@$!*(),/\\-]").expect("Invalid regex pattern");
-        }
+        // TODO params match characters: %+
         let path = if !RE_MAKE_LINK.is_match(params) {
             // Short url
             format!("/{}/{}", lang, params)
@@ -163,22 +152,16 @@ impl GeoHack {
         }
 
         // Using REFERER as a last resort for pagename
-        let referer = query.http_referrer.unwrap_or_default().clone();
-        lazy_static! {
-            static ref RE_INIT_FROM_QUERY: Regex =
-                Regex::new(r"https?://[^/]+/?(?:wiki/|w/index.php\?.*?title=)([^&?#{}\[\]]+)")
-                    .expect("Invalid regex pattern");
-        }
-        let ref_match = RE_INIT_FROM_QUERY.captures(&referer);
-        let default_pagename = if let Some(captures) = ref_match
-            && let Some(capture) = captures.get(1)
-        {
-            urlencoding::decode(capture.as_str())
-                .unwrap_or_default()
-                .to_string()
-        } else {
-            String::new()
-        };
+        let referer = query.http_referrer.unwrap_or_default();
+        let default_pagename = RE_INIT_FROM_QUERY
+            .captures(&referer)
+            .and_then(|captures| captures.get(1))
+            .map(|capture| {
+                urlencoding::decode(capture.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .unwrap_or_default();
 
         let pagename = Self::sanitize_html(&query.pagename.unwrap_or(default_pagename));
         self.pagename = html_escape::encode_text(&pagename).to_string();
@@ -386,25 +369,18 @@ Waarschuwing:
         let actions = actions_section.replace(r#"id="p-cactions""#, "");
 
         let lang_section = self.get_div_section(&page, "p-lang", 0);
-        let languages = {
-            lazy_static! {
-                static ref RE: Regex =
-                    Regex::new(r#" href="(https?:)//([a-z\-]+)?\.wikipedia\.org/wiki/[^"]*"#)
-                        .unwrap();
-            }
+        let theparams_clone = self.params.to_string();
+        let r_pagename_clone = self.pagename.to_string();
 
-            let theparams_clone = self.params.to_string();
-            let r_pagename_clone = self.pagename.to_string();
-
-            RE.replace_all(&lang_section, |caps: &regex::Captures| {
+        let languages = RE_WIKIPEDIA_LANG_LINK
+            .replace_all(&lang_section, |caps: &regex::Captures| {
                 let lang_match = caps.get(2).map_or("", |m| m.as_str());
                 format!(
                     r#" href="{}""#,
                     self.make_link(lang_match, &theparams_clone, &r_pagename_clone)
                 )
             })
-            .to_string()
-        };
+            .to_string();
 
         // Remove edit links - loop until no more editsection spans are found
         loop {

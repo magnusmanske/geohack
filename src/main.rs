@@ -41,9 +41,12 @@
 pub mod coordinate_group;
 pub mod geo_param;
 pub mod geohack;
+#[macro_use]
+pub mod macros;
 pub mod map_sources;
 pub mod misc_map_source_values;
 pub mod query_parameters;
+pub mod regex_patterns;
 pub mod server;
 pub mod templates;
 pub mod transverse_mercator_forms;

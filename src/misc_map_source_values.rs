@@ -29,39 +29,113 @@ impl MiscMapSourceValues {
     }
 
     pub fn add_rep_map(&self, rep_map: &mut HashMap<String, String>) {
-        rep_map.insert("scale".to_string(), self.scale_float.to_string());
-        rep_map.insert("mmscale".to_string(), self.mmscale.to_string());
-        rep_map.insert("altitude".to_string(), self.altitude.to_string());
-        rep_map.insert("zoom".to_string(), self.zoom.to_string());
-        rep_map.insert("osmzoom".to_string(), self.osmzoom.to_string());
-        rep_map.insert("span".to_string(), self.span.to_string());
-        rep_map.insert(
-            "type".to_string(),
-            self.attr.get("type").unwrap_or(&String::new()).clone(),
-        );
-        rep_map.insert(
-            "region".to_string(),
-            self.attr.get("region").unwrap_or(&String::new()).clone(),
-        );
-        rep_map.insert(
-            "globe".to_string(),
-            self.attr.get("globe").unwrap_or(&String::new()).clone(),
-        );
-        rep_map.insert(
-            "page".to_string(),
-            self.attr.get("page").unwrap_or(&String::new()).clone(),
-        );
-        rep_map.insert("pagename".to_string(), self.r_pagename.to_string());
-        rep_map.insert("title".to_string(), self.r_title.to_string());
-        rep_map.insert(
-            "pagenamee".to_string(),
-            urlencoding::encode(&self.r_pagename).into_owned(),
-        );
-        rep_map.insert(
-            "titlee".to_string(),
-            urlencoding::encode(&self.r_title).into_owned(),
-        );
-        rep_map.insert("geocountry".to_string(), self.region.clone());
-        rep_map.insert("geoa1".to_string(), self.region_string());
+        let empty = String::new();
+        insert_map!(rep_map, {
+            "scale" => self.scale_float,
+            "mmscale" => self.mmscale,
+            "altitude" => self.altitude,
+            "zoom" => self.zoom,
+            "osmzoom" => self.osmzoom,
+            "span" => self.span,
+            "type" => self.attr.get("type").unwrap_or(&empty),
+            "region" => self.attr.get("region").unwrap_or(&empty),
+            "globe" => self.attr.get("globe").unwrap_or(&empty),
+            "page" => self.attr.get("page").unwrap_or(&empty),
+            "pagename" => &self.r_pagename,
+            "title" => &self.r_title,
+            "pagenamee" => urlencoding::encode(&self.r_pagename),
+            "titlee" => urlencoding::encode(&self.r_title),
+            "geocountry" => &self.region,
+            "geoa1" => self.region_string(),
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_region_string_with_long_region() {
+        let mut attr = HashMap::new();
+        // "US-NY-NYC" has length 9, so characters 4..9 = "Y-NYC"
+        attr.insert("region".to_string(), "US-NY-NYC".to_string());
+
+        let msv = MiscMapSourceValues {
+            attr,
+            ..Default::default()
+        };
+
+        // Should extract characters from index 4 onwards (Y-NYC) and uppercase
+        assert_eq!(msv.region_string(), "Y-NYC");
+    }
+
+    #[test]
+    fn test_region_string_with_short_region() {
+        let mut attr = HashMap::new();
+        attr.insert("region".to_string(), "US".to_string());
+
+        let msv = MiscMapSourceValues {
+            attr,
+            ..Default::default()
+        };
+
+        // Region too short (< 4 chars), should return empty
+        assert_eq!(msv.region_string(), "");
+    }
+
+    #[test]
+    fn test_region_string_no_region() {
+        let msv = MiscMapSourceValues::default();
+
+        // No region attribute, should return empty
+        assert_eq!(msv.region_string(), "");
+    }
+
+    #[test]
+    fn test_add_rep_map() {
+        let mut attr = HashMap::new();
+        attr.insert("type".to_string(), "city".to_string());
+        attr.insert("region".to_string(), "US-NY".to_string());
+
+        let msv = MiscMapSourceValues {
+            r_pagename: "Test Page".to_string(),
+            r_title: "Test Title".to_string(),
+            scale_float: 100000.0,
+            zoom: 5,
+            osmzoom: 12,
+            altitude: 14,
+            span: 0.1,
+            mmscale: 100000,
+            region: "/US".to_string(),
+            attr,
+        };
+
+        let mut rep_map = HashMap::new();
+        msv.add_rep_map(&mut rep_map);
+
+        assert_eq!(rep_map.get("pagename").unwrap(), "Test Page");
+        assert_eq!(rep_map.get("title").unwrap(), "Test Title");
+        assert_eq!(rep_map.get("scale").unwrap(), "100000");
+        assert_eq!(rep_map.get("type").unwrap(), "city");
+        assert_eq!(rep_map.get("region").unwrap(), "US-NY");
+        assert_eq!(rep_map.get("geocountry").unwrap(), "/US");
+
+        // URL-encoded versions
+        assert_eq!(rep_map.get("pagenamee").unwrap(), "Test%20Page");
+        assert_eq!(rep_map.get("titlee").unwrap(), "Test%20Title");
+    }
+
+    #[test]
+    fn test_add_rep_map_empty_attrs() {
+        let msv = MiscMapSourceValues::default();
+
+        let mut rep_map = HashMap::new();
+        msv.add_rep_map(&mut rep_map);
+
+        // Empty attrs should produce empty strings
+        assert_eq!(rep_map.get("type").unwrap(), "");
+        assert_eq!(rep_map.get("region").unwrap(), "");
+        assert_eq!(rep_map.get("globe").unwrap(), "");
     }
 }

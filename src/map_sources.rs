@@ -1,4 +1,3 @@
-use crate::coordinate_group::CoordinateGroup;
 /** \file
  *
  *  Create a page which link to other map resources by adding the facility
@@ -29,11 +28,56 @@ use crate::coordinate_group::CoordinateGroup;
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+use crate::coordinate_group::CoordinateGroup;
 use crate::geo_param::GeoParam;
 use crate::misc_map_source_values::MiscMapSourceValues;
 use crate::transverse_mercator_forms::TransverseMercatorForms;
+use aho_corasick::AhoCorasick;
 use anyhow::Result;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
+
+/// Default scales for different location types
+static DEFAULT_SCALES: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
+    HashMap::from([
+        ("country", 10_000_000),    // 10 mill
+        ("satellite", 10_000_000),  // 10 mill
+        ("state", 3_000_000),       // 3 mill
+        ("adm1st", 1_000_000),      // 1 mill
+        ("adm2nd", 300_000),        // 300 thousand
+        ("adm3rd", 100_000),        // 100 thousand
+        ("city", 100_000),          // 100 thousand
+        ("isle", 100_000),          // 100 thousand
+        ("mountain", 100_000),      // 100 thousand
+        ("river", 100_000),         // 100 thousand
+        ("waterbody", 100_000),     // 100 thousand
+        ("event", 50_000),          // 50 thousand
+        ("forest", 50_000),         // 50 thousand
+        ("glacier", 50_000),        // 50 thousand
+        ("airport", 30_000),        // 30 thousand
+        ("railwaystation", 10_000), // 10 thousand
+        ("edu", 10_000),            // 10 thousand
+        ("pass", 10_000),           // 10 thousand
+        ("camera", 10_000),         // 10 thousand
+        ("landmark", 10_000),       // 10 thousand
+    ])
+});
+
+/// Multimap scale thresholds (threshold, result)
+const MMSCALE_THRESHOLDS: &[(f64, i32)] = &[
+    (30_000_000.0, 40_000_000),
+    (14_000_000.0, 20_000_000),
+    (6_300_000.0, 10_000_000),
+    (2_800_000.0, 4_000_000),
+    (1_400_000.0, 2_000_000),
+    (700_000.0, 1_000_000),
+    (310_000.0, 500_000),
+    (140_000.0, 200_000),
+    (70_000.0, 100_000),
+    (35_000.0, 50_000),
+    (15_000.0, 25_000),
+    (7_000.0, 10_000),
+];
 
 #[derive(Debug, Clone, Default)]
 pub struct MapSources {
@@ -90,7 +134,6 @@ impl MapSources {
         cg: CoordinateGroup,
         misc: MiscMapSourceValues,
     ) -> Result<String> {
-        let mut ret = self.thetext.clone();
         let pagename_gmaps = urlencoding::encode(&misc.r_pagename)
             .into_owned()
             .replace("%20", "+");
@@ -102,7 +145,7 @@ impl MapSources {
         misc.add_rep_map(&mut rep_map);
         rep_map.insert(
             "params".to_string(),
-            html_escape::encode_text(&self.params.as_ref().unwrap_or(&"".to_string())).to_string(),
+            html_escape::encode_text(self.params.as_deref().unwrap_or("")).to_string(),
         );
         rep_map.insert(
             "language".to_string(),
@@ -110,16 +153,23 @@ impl MapSources {
         );
         rep_map.insert("pagename_gmaps".to_string(), pagename_gmaps);
 
-        for (search_str, replacement) in rep_map
+        // Build patterns and replacements for efficient multi-pattern replacement
+        // We need to handle both {key} and &#123;key&#125; (HTML-escaped) formats
+        let (patterns, replacements): (Vec<_>, Vec<_>) = rep_map
             .iter()
-            .map(|(s, r)| (Self::quote_html(&format!("{{{s}}}")), r))
-        {
-            ret = ret.replace(&search_str, replacement);
-        }
-        for (search_str, replacement) in rep_map.iter().map(|(s, r)| (format!("{{{s}}}"), r)) {
-            ret = ret.replace(&search_str, replacement);
-        }
-        Ok(ret)
+            .flat_map(|(key, value)| {
+                [
+                    (format!("{{{key}}}"), value.clone()),
+                    (Self::quote_html(&format!("{{{key}}}")), value.clone()),
+                ]
+            })
+            .unzip();
+
+        // Use Aho-Corasick for efficient multi-pattern replacement
+        let ac = AhoCorasick::new(&patterns)?;
+        let result = ac.replace_all(&self.thetext, &replacements);
+
+        Ok(result)
     }
 
     fn get_region(&mut self, attr: &HashMap<String, String>) -> String {
@@ -151,67 +201,37 @@ impl MapSources {
     }
 
     fn default_scale(&mut self, attr: &mut HashMap<String, String>) {
-        //  Default scale
+        // Default scale
         let scale_int = attr
             .get("scale")
             .and_then(|s| s.parse::<i32>().ok())
             .unwrap_or(0);
 
-        if scale_int <= 0 {
-            let mut default = attr
-                .get("default")
-                .and_then(|d| d.parse::<i32>().ok())
-                .unwrap_or(0);
-
-            if default == 0 {
-                let default_scale: HashMap<&str, i32> = [
-                    ("country", 10000000),     // 10 mill
-                    ("satellite", 10000000),   // 10 mill
-                    ("state", 3000000),        // 3 mill
-                    ("adm1st", 1000000),       // 1 mill
-                    ("adm2nd", 300000),        // 300 thousand
-                    ("adm3rd", 100000),        // 100 thousand
-                    ("city", 100000),          // 100 thousand
-                    ("isle", 100000),          // 100 thousand
-                    ("mountain", 100000),      // 100 thousand
-                    ("river", 100000),         // 100 thousand
-                    ("waterbody", 100000),     // 100 thousand
-                    ("event", 50000),          // 50 thousand
-                    ("forest", 50000),         // 50 thousand
-                    ("glacier", 50000),        // 50 thousand
-                    ("airport", 30000),        // 30 thousand
-                    ("railwaystation", 10000), // 10 thousand
-                    ("edu", 10000),            // 10 thousand
-                    ("pass", 10000),           // 10 thousand
-                    ("camera", 10000),         // 10 thousand
-                    ("landmark", 10000),       // 10 thousand
-                ]
-                .iter()
-                .cloned()
-                .collect();
-
-                if let Some(type_attr) = attr.get("type")
-                    && let Some(&scale_val) = default_scale.get(type_attr.as_str())
-                {
-                    default = scale_val;
-                }
-
-                // FIXME: Scale according to city size, if available
-            }
-
-            if default == 0 {
-                /* No type and no default, make an assumption */
-                // FIXME: scale to input precision
-                default = if self.p.coor().len() == 8 {
-                    10000 // 10 thousand
-                } else if self.p.coor().len() == 6 {
-                    100000 // 500 thousand
-                } else {
-                    300000 // 3000 thousand
-                };
-            }
-            attr.insert("scale".to_string(), default.to_string());
+        if scale_int > 0 {
+            return;
         }
+
+        let default = attr
+            .get("default")
+            .and_then(|d| d.parse::<i32>().ok())
+            .filter(|&d| d > 0)
+            .or_else(|| {
+                // Look up default scale by type
+                attr.get("type")
+                    .and_then(|t| DEFAULT_SCALES.get(t.as_str()).copied())
+                // FIXME: Scale according to city size, if available
+            })
+            .unwrap_or_else(|| {
+                // No type and no default, make an assumption based on coordinate precision
+                // FIXME: scale to input precision
+                match self.p.coor().len() {
+                    8 => 10_000,  // 10 thousand
+                    6 => 100_000, // 100 thousand
+                    _ => 300_000, // 300 thousand
+                }
+            });
+
+        attr.insert("scale".to_string(), default.to_string());
     }
 
     fn quote_html(s: &str) -> String {
@@ -250,37 +270,12 @@ impl MapSources {
     }
 
     fn get_mmscale(scale_float: f64) -> i32 {
-        /*
-         * Multimap has a fixed set of scales
-         * and will choke unless one of them are specified
-         */
-        if scale_float >= 30000000.0 {
-            40000000
-        } else if scale_float >= 14000000.0 {
-            20000000
-        } else if scale_float >= 6300000.0 {
-            10000000
-        } else if scale_float >= 2800000.0 {
-            4000000
-        } else if scale_float >= 1400000.0 {
-            2000000
-        } else if scale_float >= 700000.0 {
-            1000000
-        } else if scale_float >= 310000.0 {
-            500000
-        } else if scale_float >= 140000.0 {
-            200000
-        } else if scale_float >= 70000.0 {
-            100000
-        } else if scale_float >= 35000.0 {
-            50000
-        } else if scale_float >= 15000.0 {
-            25000
-        } else if scale_float >= 7000.0 {
-            10000
-        } else {
-            5000
-        }
+        // Multimap has a fixed set of scales and will choke unless one of them is specified
+        MMSCALE_THRESHOLDS
+            .iter()
+            .find(|(threshold, _)| scale_float >= *threshold)
+            .map(|(_, scale)| *scale)
+            .unwrap_or(5_000)
     }
 
     fn get_osmzoom(scale_float: f64) -> i32 {
@@ -349,5 +344,136 @@ mod tests {
             "&#123;pagename_gmaps&#125;",
             MapSources::quote_html("{pagename_gmaps}")
         );
+    }
+
+    #[test]
+    fn test_get_mmscale_thresholds() {
+        // Test various scale values to ensure they map to correct multimap scales
+        assert_eq!(MapSources::get_mmscale(50_000_000.0), 40_000_000);
+        assert_eq!(MapSources::get_mmscale(30_000_000.0), 40_000_000);
+        assert_eq!(MapSources::get_mmscale(20_000_000.0), 20_000_000);
+        assert_eq!(MapSources::get_mmscale(10_000_000.0), 10_000_000);
+        assert_eq!(MapSources::get_mmscale(1_000_000.0), 1_000_000);
+        assert_eq!(MapSources::get_mmscale(100_000.0), 100_000);
+        assert_eq!(MapSources::get_mmscale(50_000.0), 50_000);
+        assert_eq!(MapSources::get_mmscale(5_000.0), 5_000);
+        assert_eq!(MapSources::get_mmscale(1_000.0), 5_000);
+    }
+
+    #[test]
+    fn test_get_osmzoom() {
+        // Test OSM zoom levels
+        assert_eq!(MapSources::get_osmzoom(0.0), 12); // Default for 0
+        assert!(MapSources::get_osmzoom(1_000.0) >= 15); // High zoom for small scale
+        assert!(MapSources::get_osmzoom(10_000_000.0) <= 5); // Low zoom for large scale
+        // Ensure clamping works
+        assert!(MapSources::get_osmzoom(1.0) <= 18);
+        assert!(MapSources::get_osmzoom(1_000_000_000.0) >= 0);
+    }
+
+    #[test]
+    fn test_get_zoom() {
+        // Test Mapquest-style zoom
+        assert_eq!(MapSources::get_zoom(0.0), 9); // Default for 0
+        assert!(MapSources::get_zoom(100_000.0) >= 0);
+        assert!(MapSources::get_zoom(100_000.0) <= 9);
+    }
+
+    #[test]
+    fn test_get_altitude() {
+        // Test altitude calculation
+        assert_eq!(MapSources::get_altitude(1_000_000.0), 143);
+        assert_eq!(MapSources::get_altitude(500_000.0), 71);
+        assert_eq!(MapSources::get_altitude(100.0), 1); // Minimum is 1
+    }
+
+    #[test]
+    fn test_get_scale_float_span() {
+        assert_eq!(MapSources::get_scale_float_span(1_000_000.0), 1.0);
+        assert_eq!(MapSources::get_scale_float_span(500_000.0), 0.5);
+        assert_eq!(MapSources::get_scale_float_span(2_000_000.0), 2.0);
+    }
+
+    #[test]
+    fn test_get_scale_float() {
+        let mut attr = HashMap::new();
+        attr.insert("scale".to_string(), "500000".to_string());
+        assert_eq!(MapSources::get_scale_float(&attr), 500_000.0);
+
+        // Default when no scale
+        let empty_attr = HashMap::new();
+        assert_eq!(MapSources::get_scale_float(&empty_attr), 300_000.0);
+
+        // Invalid scale value
+        let mut invalid_attr = HashMap::new();
+        invalid_attr.insert("scale".to_string(), "invalid".to_string());
+        assert_eq!(MapSources::get_scale_float(&invalid_attr), 300_000.0);
+    }
+
+    #[test]
+    fn test_map_sources_new() {
+        let ms = MapSources::new("40_N_74_W_type:city", "en").unwrap();
+        assert_eq!(ms.language, "en");
+        assert!(ms.params.is_some());
+        assert_eq!(ms.mapsources, "Map sources");
+    }
+
+    #[test]
+    fn test_scale_dim_conversion() {
+        let mut attr = HashMap::new();
+        attr.insert("dim".to_string(), "1000".to_string());
+
+        MapSources::scale_dim(&mut attr);
+
+        // dim 1000m should convert to scale 10000 (1000 / 0.1)
+        assert!(attr.contains_key("scale"));
+        let scale: f64 = attr.get("scale").unwrap().parse().unwrap();
+        assert_eq!(scale, 10_000.0);
+    }
+
+    #[test]
+    fn test_scale_dim_with_km() {
+        let mut attr = HashMap::new();
+        attr.insert("dim".to_string(), "1km".to_string());
+
+        MapSources::scale_dim(&mut attr);
+
+        // dim 1km = 1000m should convert to scale 10000
+        let scale: f64 = attr.get("scale").unwrap().parse().unwrap();
+        assert_eq!(scale, 10_000.0);
+    }
+
+    #[test]
+    fn test_scale_zoom_conversion() {
+        let mut attr = HashMap::new();
+        attr.insert("zoom".to_string(), "12".to_string());
+
+        MapSources::scale_zoom(&mut attr);
+
+        assert!(attr.contains_key("scale"));
+    }
+
+    #[test]
+    fn test_default_scale_by_type() {
+        let mut ms = MapSources::new("40_N_74_W", "en").unwrap();
+        let mut attr = HashMap::new();
+        attr.insert("type".to_string(), "country".to_string());
+
+        ms.default_scale(&mut attr);
+
+        let scale: i32 = attr.get("scale").unwrap().parse().unwrap();
+        assert_eq!(scale, 10_000_000);
+    }
+
+    #[test]
+    fn test_default_scale_by_coordinate_precision() {
+        let mut ms = MapSources::new("40_30_45_N_74_0_21_W", "en").unwrap();
+        let mut attr = HashMap::new();
+
+        ms.default_scale(&mut attr);
+
+        // 8-piece coordinates should get 10000 scale
+        let scale: i32 = attr.get("scale").unwrap().parse().unwrap();
+        assert_eq!(scale, 10_000);
     }
 }
