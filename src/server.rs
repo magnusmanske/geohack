@@ -77,17 +77,19 @@ async fn geohack(
     params: Query<QueryParameters>,
 ) -> Result<Html<String>, StatusCode> {
     let mut query = params.0;
-    query.http_referrer = headers
-        .get("referer")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    query.set_http_referrer(
+        headers
+            .get("referer")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+    );
     let mut geohack = GeoHack::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     geohack
         .init_from_query(query.clone())
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let language = geohack.lang.trim().to_ascii_lowercase();
-    let globe = geohack.globe.trim().to_ascii_lowercase();
+    let language = geohack.lang().trim().to_ascii_lowercase();
+    let globe = geohack.globe().trim().to_ascii_lowercase();
     let purge = query.purge();
     let template_content = state
         .templates

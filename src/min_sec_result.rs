@@ -1,11 +1,11 @@
 /// Result structure for make_minsec function
 #[derive(Debug, Clone, Default)]
 pub struct MinSecResult {
-    pub deg: f64,
-    pub min: f64,
-    pub sec: f64,
-    pub ns: String,
-    pub ew: String,
+    deg: f64,
+    min: f64,
+    sec: f64,
+    ns: String,
+    ew: String,
 }
 
 impl MinSecResult {
@@ -28,6 +28,26 @@ impl MinSecResult {
             ew: ew.to_string(),
         }
     }
+
+    pub const fn deg(&self) -> f64 {
+        self.deg
+    }
+
+    pub const fn min(&self) -> f64 {
+        self.min
+    }
+
+    pub const fn sec(&self) -> f64 {
+        self.sec
+    }
+
+    pub fn ns(&self) -> &str {
+        &self.ns
+    }
+
+    pub fn ew(&self) -> &str {
+        &self.ew
+    }
 }
 
 #[cfg(test)]
@@ -37,15 +57,15 @@ mod tests {
     #[test]
     fn test_new() {
         let result = MinSecResult::new(40.5);
-        assert_eq!(result.deg, 40.5);
-        assert_eq!(result.min as i32, 30);
-        assert_eq!(result.ns, "N");
-        assert_eq!(result.ew, "E");
+        assert_eq!(result.deg(), 40.5);
+        assert_eq!(result.min() as i32, 30);
+        assert_eq!(result.ns(), "N");
+        assert_eq!(result.ew(), "E");
 
         let result_neg = MinSecResult::new(-74.25);
-        assert_eq!(result_neg.deg, -74.25);
-        assert_eq!(result_neg.min as i32, 15);
-        assert_eq!(result_neg.ns, "S");
-        assert_eq!(result_neg.ew, "W");
+        assert_eq!(result_neg.deg(), -74.25);
+        assert_eq!(result_neg.min() as i32, 15);
+        assert_eq!(result_neg.ns(), "S");
+        assert_eq!(result_neg.ew(), "W");
     }
 }

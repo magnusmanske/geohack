@@ -18,16 +18,16 @@ const MMSCALE_THRESHOLDS: &[(f64, i32)] = &[
 
 #[derive(Debug, Clone, Default)]
 pub struct MiscMapSourceValues {
-    pub r_pagename: String,
-    pub r_title: String,
-    pub scale_float: f64,
-    pub zoom: i32,
-    pub osmzoom: i32,
-    pub altitude: i32,
-    pub span: f64,
-    pub mmscale: i32,
-    pub region: String,
-    pub attr: HashMap<String, String>,
+    r_pagename: String,
+    r_title: String,
+    scale_float: f64,
+    zoom: i32,
+    osmzoom: i32,
+    altitude: i32,
+    span: f64,
+    mmscale: i32,
+    region: String,
+    attr: HashMap<String, String>,
 }
 
 impl MiscMapSourceValues {
@@ -117,6 +117,34 @@ impl MiscMapSourceValues {
         scale_float * 1.0 / 1000000.0
     }
 
+    pub const fn scale_float(&self) -> f64 {
+        self.scale_float
+    }
+
+    pub const fn altitude(&self) -> i32 {
+        self.altitude
+    }
+
+    pub const fn span(&self) -> f64 {
+        self.span
+    }
+
+    pub const fn mmscale(&self) -> i32 {
+        self.mmscale
+    }
+
+    pub fn r_pagename(&self) -> &str {
+        &self.r_pagename
+    }
+
+    pub fn r_title(&self) -> &str {
+        &self.r_title
+    }
+
+    pub fn region(&self) -> &str {
+        &self.region
+    }
+
     pub fn region_string(&self) -> String {
         self.attr
             .get("region")
@@ -163,10 +191,7 @@ mod tests {
         // "US-NY-NYC" has length 9, so characters 4..9 = "Y-NYC"
         attr.insert("region".to_string(), "US-NY-NYC".to_string());
 
-        let msv = MiscMapSourceValues {
-            attr,
-            ..Default::default()
-        };
+        let msv = MiscMapSourceValues::new("", "", "", attr);
 
         // Should extract characters from index 4 onwards (Y-NYC) and uppercase
         assert_eq!(msv.region_string(), "Y-NYC");
@@ -177,10 +202,7 @@ mod tests {
         let mut attr = HashMap::new();
         attr.insert("region".to_string(), "US".to_string());
 
-        let msv = MiscMapSourceValues {
-            attr,
-            ..Default::default()
-        };
+        let msv = MiscMapSourceValues::new("", "", "", attr);
 
         // Region too short (< 4 chars), should return empty
         assert_eq!(msv.region_string(), "");
@@ -199,19 +221,9 @@ mod tests {
         let mut attr = HashMap::new();
         attr.insert("type".to_string(), "city".to_string());
         attr.insert("region".to_string(), "US-NY".to_string());
+        attr.insert("scale".to_string(), "100000".to_string());
 
-        let msv = MiscMapSourceValues {
-            r_pagename: "Test Page".to_string(),
-            r_title: "Test Title".to_string(),
-            scale_float: 100000.0,
-            zoom: 5,
-            osmzoom: 12,
-            altitude: 14,
-            span: 0.1,
-            mmscale: 100000,
-            region: "/US".to_string(),
-            attr,
-        };
+        let msv = MiscMapSourceValues::new("Test Page", "Test Title", "/US", attr);
 
         let mut rep_map = HashMap::new();
         msv.add_rep_map(&mut rep_map);
@@ -315,12 +327,12 @@ mod tests {
 
         let msv = MiscMapSourceValues::new("Test Page", "Test Title", "/US", attr);
 
-        assert_eq!(msv.scale_float, 1_000_000.0);
-        assert_eq!(msv.altitude, 143); // 1000000 * 143 / 1000000
-        assert_eq!(msv.span, 1.0); // 1000000 / 1000000
-        assert_eq!(msv.mmscale, 1_000_000);
-        assert_eq!(msv.r_pagename, "Test Page");
-        assert_eq!(msv.r_title, "Test Title");
-        assert_eq!(msv.region, "/US");
+        assert_eq!(msv.scale_float(), 1_000_000.0);
+        assert_eq!(msv.altitude(), 143); // 1000000 * 143 / 1000000
+        assert_eq!(msv.span(), 1.0); // 1000000 / 1000000
+        assert_eq!(msv.mmscale(), 1_000_000);
+        assert_eq!(msv.r_pagename(), "Test Page");
+        assert_eq!(msv.r_title(), "Test Title");
+        assert_eq!(msv.region(), "/US");
     }
 }

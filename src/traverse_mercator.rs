@@ -41,14 +41,13 @@ use std::f64::consts::PI;
  */
 #[derive(Debug, Clone)]
 pub struct TransverseMercator {
-    /* public: */
-    pub northing: f64,
-    pub easting: f64,
-    pub zone: String,
+    northing: f64,
+    easting: f64,
+    zone: String,
 
     /* Reference Ellipsoid, default to WGS-84 */
-    pub radius: f64,       /* major semi axis = a */
-    pub eccentricity: f64, /* square of eccentricity */
+    radius: f64,       /* major semi axis = a */
+    eccentricity: f64, /* square of eccentricity */
 
     /* Flattening = f = (a-b) / a */
     /* Inverse flattening = 1/f = 298.2572236 */
@@ -56,10 +55,10 @@ pub struct TransverseMercator {
     /* Eccentricity e = sqrt(a^2 - b^2)/a = 0.081819190843 */
 
     /* Transverse Mercator parameters */
-    pub scale: f64,
-    pub easting_offset: f64,
-    pub northing_offset: f64,
-    pub northing_offset_south: f64, /* for Southern hemisphere */
+    scale: f64,
+    easting_offset: f64,
+    northing_offset: f64,
+    northing_offset_south: f64, /* for Southern hemisphere */
 }
 
 impl Default for TransverseMercator {
@@ -79,6 +78,22 @@ impl Default for TransverseMercator {
 }
 
 impl TransverseMercator {
+    pub const fn northing(&self) -> f64 {
+        self.northing
+    }
+
+    pub const fn easting(&self) -> f64 {
+        self.easting
+    }
+
+    pub fn zone(&self) -> &str {
+        &self.zone
+    }
+
+    pub fn set_zone(&mut self, zone: String) {
+        self.zone = zone;
+    }
+
     /**
      *  Convert latitude, longitude in decimal degrees to
      *  UTM Zone, Easting, and Northing
@@ -341,9 +356,9 @@ impl TransverseMercator {
 // Additional structures for specialized coordinate systems
 #[derive(Debug, Clone)]
 pub struct OSGB36 {
-    pub tm: TransverseMercator,
-    pub northing: f64,
-    pub easting: f64,
+    tm: TransverseMercator,
+    northing: f64,
+    easting: f64,
 }
 
 impl Default for OSGB36 {
@@ -366,19 +381,27 @@ impl Default for OSGB36 {
 }
 
 impl OSGB36 {
+    pub const fn northing(&self) -> f64 {
+        self.northing
+    }
+
+    pub const fn easting(&self) -> f64 {
+        self.easting
+    }
+
     pub fn lat_lon_to_osgb36(&mut self, latitude: f64, longitude: f64) -> String {
         let result = self.tm.lat_lon_to_osgb36(latitude, longitude);
-        self.northing = self.tm.northing;
-        self.easting = self.tm.easting;
+        self.northing = self.tm.northing();
+        self.easting = self.tm.easting();
         result
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CH1903 {
-    pub tm: TransverseMercator,
-    pub northing: f64,
-    pub easting: f64,
+    tm: TransverseMercator,
+    northing: f64,
+    easting: f64,
 }
 
 impl Default for CH1903 {
@@ -392,10 +415,18 @@ impl Default for CH1903 {
 }
 
 impl CH1903 {
+    pub const fn northing(&self) -> f64 {
+        self.northing
+    }
+
+    pub const fn easting(&self) -> f64 {
+        self.easting
+    }
+
     pub fn lat_lon_to_ch1903(&mut self, latitude: f64, longitude: f64) -> bool {
         let result = self.tm.lat_lon_to_ch1903(latitude, longitude);
-        self.northing = self.tm.northing;
-        self.easting = self.tm.easting;
+        self.northing = self.tm.northing();
+        self.easting = self.tm.easting();
         result
     }
 }
@@ -423,9 +454,9 @@ mod tests {
         tm.lat_lon_to_utm(40.7128, -74.0060);
 
         // Check that values are set
-        assert!(tm.northing > 0.0);
-        assert!(tm.easting > 0.0);
-        assert!(!tm.zone.is_empty());
+        assert!(tm.northing() > 0.0);
+        assert!(tm.easting() > 0.0);
+        assert!(!tm.zone().is_empty());
     }
 
     #[test]
@@ -444,8 +475,8 @@ mod tests {
         // Test Swiss coordinates (Bern)
         let result1 = tm.lat_lon_to_ch1903(46.9480, 7.4474);
         assert!(result1);
-        assert!(tm.northing > 0.0);
-        assert!(tm.easting > 0.0);
+        assert!(tm.northing() > 0.0);
+        assert!(tm.easting() > 0.0);
 
         // Test out of range
         let result2 = tm.lat_lon_to_ch1903(50.0, 0.0);

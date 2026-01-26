@@ -65,11 +65,11 @@ static DEFAULT_SCALES: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
 
 #[derive(Debug, Clone, Default)]
 pub struct MapSources {
-    pub p: GeoParam,
-    pub mapsources: String,
-    pub thetext: String,
-    pub params: Option<String>,
-    pub language: String,
+    p: GeoParam,
+    mapsources: String,
+    thetext: String,
+    params: Option<String>,
+    language: String,
 }
 
 impl MapSources {
@@ -83,6 +83,18 @@ impl MapSources {
             params: Some(params.to_string()),
             language: language.to_string(),
         })
+    }
+
+    pub const fn p(&self) -> &GeoParam {
+        &self.p
+    }
+
+    pub const fn p_mut(&mut self) -> &mut GeoParam {
+        &mut self.p
+    }
+
+    pub fn set_thetext(&mut self, thetext: String) {
+        self.thetext = thetext;
     }
 
     pub fn build_output(&mut self, r_pagename: &str, r_title: &str) -> Result<String> {
@@ -105,7 +117,7 @@ impl MapSources {
         cg: CoordinateGroup,
         misc: MiscMapSourceValues,
     ) -> Result<String> {
-        let pagename_gmaps = urlencoding::encode(&misc.r_pagename)
+        let pagename_gmaps = urlencoding::encode(misc.r_pagename())
             .into_owned()
             .replace("%20", "+");
         let pagename_gmaps = urlencoding::encode(&pagename_gmaps).into_owned();

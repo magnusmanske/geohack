@@ -23,37 +23,37 @@ impl CoordinateGroup {
         let lon = MinSecResult::new(p.londeg());
 
         // Hack for negative, small degrees
-        let latdegint = if p.latdeg() < 0.0 && lat.deg as i32 == 0 {
+        let latdegint = if p.latdeg() < 0.0 && lat.deg() as i32 == 0 {
             "-0".to_string()
         } else {
-            (lat.deg as i32).to_string()
+            (lat.deg() as i32).to_string()
         };
 
-        let londegint = if p.londeg() < 0.0 && lon.deg as i32 == 0 {
+        let londegint = if p.londeg() < 0.0 && lon.deg() as i32 == 0 {
             "-0".to_string()
         } else {
-            (lon.deg as i32).to_string()
+            (lon.deg() as i32).to_string()
         };
 
-        let latdeground = if p.latdeg() < 0.0 && lat.deg.round() as i32 == 0 {
+        let latdeground = if p.latdeg() < 0.0 && lat.deg().round() as i32 == 0 {
             "-0".to_string()
         } else {
-            lat.deg.round().to_string()
+            lat.deg().round().to_string()
         };
 
-        let londeground = if p.londeg() < 0.0 && lon.deg.round() as i32 == 0 {
+        let londeground = if p.londeg() < 0.0 && lon.deg().round() as i32 == 0 {
             "-0".to_string()
         } else {
-            lon.deg.round().to_string()
+            lon.deg().round().to_string()
         };
 
-        let latdeg_outer_abs = lat.deg.abs().ceil() as i32;
-        let londeg_outer_abs = lon.deg.abs().ceil() as i32;
+        let latdeg_outer_abs = lat.deg().abs().ceil() as i32;
+        let londeg_outer_abs = lon.deg().abs().ceil() as i32;
 
-        let longantipodes = if lon.deg > 0.0 {
-            lon.deg - 180.0
+        let longantipodes = if lon.deg() > 0.0 {
+            lon.deg() - 180.0
         } else {
-            lon.deg + 180.0
+            lon.deg() + 180.0
         };
         Self {
             lat,
@@ -70,33 +70,33 @@ impl CoordinateGroup {
 
     pub fn add_rep_map(&self, rep_map: &mut HashMap<String, String>) {
         insert_map!(rep_map, {
-            "latdegdec" => self.lat.deg,
-            "londegdec" => self.lon.deg,
-            "latdegdecabs" => self.lat.deg.abs(),
-            "londegdecabs" => self.lon.deg.abs(),
+            "latdegdec" => self.lat.deg(),
+            "londegdec" => self.lon.deg(),
+            "latdegdecabs" => self.lat.deg().abs(),
+            "londegdecabs" => self.lon.deg().abs(),
             "latdeground" => &self.latdeground,
             "londeground" => &self.londeground,
-            "latdegroundabs" => self.lat.deg.round().abs(),
-            "londegroundabs" => self.lon.deg.round().abs(),
+            "latdegroundabs" => self.lat.deg().round().abs(),
+            "londegroundabs" => self.lon.deg().round().abs(),
             "latdeg_outer_abs" => self.latdeg_outer_abs,
             "londeg_outer_abs" => self.londeg_outer_abs,
-            "latantipodes" => -self.lat.deg,
+            "latantipodes" => -self.lat.deg(),
             "longantipodes" => self.longantipodes,
-            "londegneg" => -self.lon.deg,
+            "londegneg" => -self.lon.deg(),
             "latdegint" => &self.latdegint,
             "londegint" => &self.londegint,
-            "latdegabs" => self.lat.deg.abs() as i32,
-            "londegabs" => self.lon.deg.abs() as i32,
-            "latmindec" => self.lat.min,
-            "lonmindec" => self.lon.min,
-            "latminint" => self.lat.min as i32,
-            "lonminint" => self.lon.min as i32,
-            "latsecdec" => self.lat.sec,
-            "lonsecdec" => self.lon.sec,
-            "latsecint" => self.lat.sec as i32,
-            "lonsecint" => self.lon.sec as i32,
-            "latNS" => &self.lat.ns,
-            "lonEW" => &self.lon.ew,
+            "latdegabs" => self.lat.deg().abs() as i32,
+            "londegabs" => self.lon.deg().abs() as i32,
+            "latmindec" => self.lat.min(),
+            "lonmindec" => self.lon.min(),
+            "latminint" => self.lat.min() as i32,
+            "lonminint" => self.lon.min() as i32,
+            "latsecdec" => self.lat.sec(),
+            "lonsecdec" => self.lon.sec(),
+            "latsecint" => self.lat.sec() as i32,
+            "lonsecint" => self.lon.sec() as i32,
+            "latNS" => self.lat.ns(),
+            "lonEW" => self.lon.ew(),
         });
     }
 }
@@ -112,8 +112,8 @@ mod tests {
 
         assert_eq!(cg.latdegint, "40");
         assert_eq!(cg.londegint, "-74");
-        assert!(cg.lat.deg > 40.0);
-        assert!(cg.lon.deg < -73.0);
+        assert!(cg.lat.deg() > 40.0);
+        assert!(cg.lon.deg() < -73.0);
     }
 
     #[test]

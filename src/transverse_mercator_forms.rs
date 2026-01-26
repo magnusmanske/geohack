@@ -20,7 +20,7 @@ impl TransverseMercatorForms {
         /* standard UTM */
         let mut utm = TransverseMercator::default();
         utm.lat_lon_to_utm(p.latdeg(), p.londeg());
-        utm.zone = utm.lat_lon_to_utm_zone(p.latdeg(), p.londeg());
+        utm.set_zone(utm.lat_lon_to_utm_zone(p.latdeg(), p.londeg()));
 
         /* fixed UTM as used by iNatur */
         let mut utm33 = TransverseMercator::default();
@@ -45,16 +45,16 @@ impl TransverseMercatorForms {
 
     pub fn add_rep_map(&self, rep_map: &mut HashMap<String, String>) {
         insert_map!(rep_map, {
-            "utmzone" => &self.utm.zone,
-            "utmnorthing" => self.utm.northing.round(),
-            "utmeasting" => self.utm.easting.round(),
-            "utm33northing" => self.utm33.northing.round(),
-            "utm33easting" => self.utm33.easting.round(),
+            "utmzone" => self.utm.zone(),
+            "utmnorthing" => self.utm.northing().round(),
+            "utmeasting" => self.utm.easting().round(),
+            "utm33northing" => self.utm33.northing().round(),
+            "utm33easting" => self.utm33.easting().round(),
             "osgb36ref" => &self.osgb36ref,
-            "osgb36northing" => self.osgb36.northing.round(),
-            "osgb36easting" => self.osgb36.easting.round(),
-            "ch1903northing" => self.ch1903.northing.round(),
-            "ch1903easting" => self.ch1903.easting.round(),
+            "osgb36northing" => self.osgb36.northing().round(),
+            "osgb36easting" => self.osgb36.easting().round(),
+            "ch1903northing" => self.ch1903.northing().round(),
+            "ch1903easting" => self.ch1903.easting().round(),
         });
     }
 }
@@ -70,7 +70,7 @@ mod tests {
         let tmf = TransverseMercatorForms::new(&geo);
 
         // UTM zone should be 30 or 31 for London
-        assert!(tmf.utm.zone.starts_with("30") || tmf.utm.zone.starts_with("31"));
+        assert!(tmf.utm.zone().starts_with("30") || tmf.utm.zone().starts_with("31"));
 
         // OSGB36 should produce valid reference for London
         assert!(!tmf.osgb36ref.is_empty());
@@ -84,8 +84,8 @@ mod tests {
         let tmf = TransverseMercatorForms::new(&geo);
 
         // CH1903 should produce valid coordinates for Switzerland
-        assert!(tmf.ch1903.northing > 100_000.0);
-        assert!(tmf.ch1903.easting > 500_000.0);
+        assert!(tmf.ch1903.northing() > 100_000.0);
+        assert!(tmf.ch1903.easting() > 500_000.0);
     }
 
     #[test]

@@ -234,20 +234,21 @@ impl GeoParam {
         let latdms = MinSecResult::new(lat);
         let londms = MinSecResult::new(lon);
 
-        let mut outlat = format!("{}°\u{00A0}", latdms.deg.abs() as i32);
-        let mut outlon = format!("{}°\u{00A0}", londms.deg.abs() as i32);
+        let mut outlat = format!("{}°\u{00A0}", latdms.deg().abs() as i32);
+        let mut outlon = format!("{}°\u{00A0}", londms.deg().abs() as i32);
 
-        if latdms.min != 0.0 || londms.min != 0.0 || latdms.sec != 0.0 || londms.sec != 0.0 {
-            outlat.push_str(&format!("{}′\u{00A0}", latdms.min as i32));
-            outlon.push_str(&format!("{}′\u{00A0}", londms.min as i32));
+        if latdms.min() != 0.0 || londms.min() != 0.0 || latdms.sec() != 0.0 || londms.sec() != 0.0
+        {
+            outlat.push_str(&format!("{}′\u{00A0}", latdms.min() as i32));
+            outlon.push_str(&format!("{}′\u{00A0}", londms.min() as i32));
 
-            if latdms.sec != 0.0 || londms.sec != 0.0 {
-                outlat.push_str(&format!("{}″\u{00A0}", latdms.sec));
-                outlon.push_str(&format!("{}″\u{00A0}", londms.sec));
+            if latdms.sec() != 0.0 || londms.sec() != 0.0 {
+                outlat.push_str(&format!("{}″\u{00A0}", latdms.sec()));
+                outlon.push_str(&format!("{}″\u{00A0}", londms.sec()));
             }
         }
 
-        format!("{}{} {}{}", outlat, latdms.ns, outlon, londms.ew)
+        format!("{}{} {}{}", outlat, latdms.ns(), outlon, londms.ew())
     }
 
     /// Get the additional attributes in an associative array (HashMap)

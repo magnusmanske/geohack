@@ -3,28 +3,54 @@ use serde::Deserialize;
 /// The (potential) URL parameters for the geohack.php endpoint.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct QueryParameters {
-    pub language: Option<String>,
-    pub pagename: Option<String>,
-    pub params: String,
-    pub default: Option<String>,
-    pub dim: Option<String>,
-    pub globe: Option<String>,
-    pub region: Option<String>,
-    pub scale: Option<String>,
-    #[serde(rename = "type")]
-    pub typename: Option<String>,
-    pub zoom: Option<String>,
-    pub project: Option<String>,
-    pub title: Option<String>,
-    pub sandbox: Option<u8>,
-    pub purge: Option<u8>,
-    pub http_referrer: Option<String>,
+    language: Option<String>,
+    pagename: Option<String>,
+    params: String,
+    // default: Option<String>,
+    // dim: Option<String>,
+    // globe: Option<String>,
+    // region: Option<String>,
+    // scale: Option<String>,
+    // #[serde(rename = "type")]
+    // typename: Option<String>,
+    // zoom: Option<String>,
+    #[serde(rename = "project")]
+    project_field: Option<String>,
+    title: Option<String>,
+    sandbox: Option<u8>,
+    purge: Option<u8>,
+    #[serde(skip)]
+    http_referrer: Option<String>,
 }
 
 impl QueryParameters {
+    pub fn language(&self) -> Option<&str> {
+        self.language.as_deref()
+    }
+
+    pub fn pagename(&self) -> Option<&str> {
+        self.pagename.as_deref()
+    }
+
+    pub fn params(&self) -> &str {
+        &self.params
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn http_referrer(&self) -> Option<&str> {
+        self.http_referrer.as_deref()
+    }
+
+    pub fn set_http_referrer(&mut self, referrer: Option<String>) {
+        self.http_referrer = referrer;
+    }
+
     /// Sanitizes the project parameter
     pub fn project(&self) -> Option<String> {
-        let project = self.project.as_ref()?;
+        let project = self.project_field.as_ref()?;
         if project.trim().is_empty() {
             None
         } else {
@@ -41,6 +67,16 @@ impl QueryParameters {
     pub fn purge(&self) -> bool {
         self.purge == Some(1) || self.sandbox()
     }
+
+    /// Create a new QueryParameters for testing with params and optional title
+    #[cfg(test)]
+    pub fn new_for_test(params: &str, title: Option<&str>) -> Self {
+        Self {
+            params: params.to_string(),
+            title: title.map(|s| s.to_string()),
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -50,7 +86,7 @@ mod tests {
     #[test]
     fn test_project() {
         let params = QueryParameters {
-            project: Some("ProjectName".to_string()),
+            project_field: Some("ProjectName".to_string()),
             ..Default::default()
         };
         assert_eq!(params.project(), Some("projectname".to_string()));
@@ -59,7 +95,7 @@ mod tests {
     #[test]
     fn test_project_none() {
         let params = QueryParameters {
-            project: None,
+            project_field: None,
             ..Default::default()
         };
         assert_eq!(params.project(), None);
@@ -68,7 +104,7 @@ mod tests {
     #[test]
     fn test_project_empty() {
         let params = QueryParameters {
-            project: Some("".to_string()),
+            project_field: Some("".to_string()),
             ..Default::default()
         };
         assert_eq!(params.project(), None);
@@ -77,7 +113,7 @@ mod tests {
     #[test]
     fn test_project_whitespace() {
         let params = QueryParameters {
-            project: Some("  ProjectName  ".to_string()),
+            project_field: Some("  ProjectName  ".to_string()),
             ..Default::default()
         };
         assert_eq!(params.project(), Some("projectname".to_string()));
