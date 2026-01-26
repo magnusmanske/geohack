@@ -17,12 +17,19 @@ pub struct GeoParam {
 impl GeoParam {
     /// Constructor: Read coordinates, and if there is a range, read the range
     pub fn new(param: &str) -> Result<Self> {
-        // Replace 'O' with 'E' and underscores with spaces, then split
-        let pieces = param
-            .replace('O', "E")
+        // Replace underscores with spaces and split
+        let pieces: Vec<String> = param
             .replace('_', " ")
             .split_whitespace()
-            .map(String::from)
+            .map(|s| {
+                // Only replace 'O' with 'E' for standalone direction indicators
+                // (German "Ost" for East), not in attribute values like region:JO
+                if s == "O" || s == "o" {
+                    "E".to_string()
+                } else {
+                    s.to_string()
+                }
+            })
             .collect();
 
         let mut geo = Self {
@@ -484,6 +491,17 @@ mod tests {
         // 'O' should be replaced with 'E' (German "Ost" for East)
         let geo = GeoParam::new("40_N_74_O").unwrap();
         assert_eq!(geo.londeg, 74.0); // Positive because O -> E (East)
+    }
+
+    #[test]
+    fn test_region_code_preserved() {
+        let mut geo = GeoParam::new("40_N_74_W_region:JO").unwrap();
+        let attr = geo.get_attr();
+        assert_eq!(attr.get("region"), Some(&"JO".to_string())); // Jordan, not Jersey
+
+        let mut geo2 = GeoParam::new("40_N_74_W_region:CA-ON").unwrap();
+        let attr2 = geo2.get_attr();
+        assert_eq!(attr2.get("region"), Some(&"CA-ON".to_string())); // Ontario, not CA-EN
     }
 
     #[test]
