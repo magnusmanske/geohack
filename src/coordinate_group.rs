@@ -1,5 +1,6 @@
-use crate::geo_param::{GeoParam, MinSecResult};
+use crate::geo_param::GeoParam;
 use crate::insert_map;
+use crate::min_sec_result::MinSecResult;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
@@ -18,8 +19,8 @@ pub struct CoordinateGroup {
 impl CoordinateGroup {
     pub fn new(p: &GeoParam) -> Self {
         // Make minutes and seconds, and round
-        let lat = GeoParam::make_minsec(p.latdeg());
-        let lon = GeoParam::make_minsec(p.londeg());
+        let lat = MinSecResult::new(p.latdeg());
+        let lon = MinSecResult::new(p.londeg());
 
         // Hack for negative, small degrees
         let latdegint = if p.latdeg() < 0.0 && lat.deg as i32 == 0 {

@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
+use crate::min_sec_result::MinSecResult;
+
 /// Parse geographic parameters
 #[derive(Debug, Clone, Default)]
 pub struct GeoParam {
@@ -227,30 +229,10 @@ impl GeoParam {
         self.londeg *= lonfactor;
     }
 
-    /// Given decimal degrees, convert to minutes, seconds and direction
-    pub fn make_minsec(deg: f64) -> MinSecResult {
-        let (ns, ew) = if deg >= 0.0 { ("N", "E") } else { ("S", "W") };
-
-        // Round to a suitable number of digits
-        let deg_rounded = (deg * 1_000_000.0).round() / 1_000_000.0;
-        let min = 60.0 * (deg_rounded.abs() - deg_rounded.abs().floor());
-        let min_rounded = (min * 10_000.0).round() / 10_000.0;
-        let sec = 60.0 * (min_rounded - min_rounded.floor());
-        let sec_rounded = (sec * 100.0).round() / 100.0;
-
-        MinSecResult {
-            deg: deg_rounded,
-            min: min_rounded,
-            sec: sec_rounded,
-            ns: ns.to_string(),
-            ew: ew.to_string(),
-        }
-    }
-
     /// Given decimal degrees latitude and longitude, convert to string
     pub fn make_position(lat: f64, lon: f64) -> String {
-        let latdms = Self::make_minsec(lat);
-        let londms = Self::make_minsec(lon);
+        let latdms = MinSecResult::new(lat);
+        let londms = MinSecResult::new(lon);
 
         let mut outlat = format!("{}°\u{00A0}", latdms.deg.abs() as i32);
         let mut outlon = format!("{}°\u{00A0}", londms.deg.abs() as i32);
@@ -359,16 +341,6 @@ impl GeoParam {
     pub const fn pieces_mut(&mut self) -> &mut Vec<String> {
         &mut self.pieces
     }
-}
-
-/// Result structure for make_minsec function
-#[derive(Debug, Clone, Default)]
-pub struct MinSecResult {
-    pub deg: f64,
-    pub min: f64,
-    pub sec: f64,
-    pub ns: String,
-    pub ew: String,
 }
 
 #[cfg(test)]
@@ -509,21 +481,6 @@ mod tests {
         let geo = GeoParam::new("35_S_149_E").unwrap();
         assert_eq!(geo.latdeg, -35.0);
         assert_eq!(geo.londeg, 149.0);
-    }
-
-    #[test]
-    fn test_make_minsec() {
-        let result = GeoParam::make_minsec(40.5);
-        assert_eq!(result.deg, 40.5);
-        assert_eq!(result.min as i32, 30);
-        assert_eq!(result.ns, "N");
-        assert_eq!(result.ew, "E");
-
-        let result_neg = GeoParam::make_minsec(-74.25);
-        assert_eq!(result_neg.deg, -74.25);
-        assert_eq!(result_neg.min as i32, 15);
-        assert_eq!(result_neg.ns, "S");
-        assert_eq!(result_neg.ew, "W");
     }
 
     #[test]

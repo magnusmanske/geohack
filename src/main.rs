@@ -44,6 +44,7 @@ pub mod geohack;
 #[macro_use]
 pub mod macros;
 pub mod map_sources;
+pub mod min_sec_result;
 pub mod misc_map_source_values;
 pub mod query_parameters;
 pub mod regex_patterns;

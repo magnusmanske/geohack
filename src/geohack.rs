@@ -4,11 +4,12 @@
  * Converted to Rust 2005 by <Magnus Manske> <magnusmanske@googlemail.com>
 */
 use crate::map_sources::MapSources;
+use crate::min_sec_result::MinSecResult;
+use crate::query_parameters::QueryParameters;
 use crate::regex_patterns::{
     RE_FIX_LANGUAGE_CODE, RE_INIT_FROM_QUERY, RE_MAKE_LINK, RE_SANITIZE_HTML,
     RE_WIKIPEDIA_LANG_LINK,
 };
-use crate::{geo_param::GeoParam, query_parameters::QueryParameters};
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
@@ -207,8 +208,8 @@ impl GeoHack {
 
     /// Build the output HTML
     pub fn build_output(&mut self) -> String {
-        let lat = GeoParam::make_minsec(self.map_sources.p.latdeg());
-        let lon = GeoParam::make_minsec(self.map_sources.p.londeg());
+        let lat = MinSecResult::new(self.map_sources.p.latdeg());
+        let lon = MinSecResult::new(self.map_sources.p.londeg());
 
         // Build title
         let mytitle = if !self.title.is_empty() {
