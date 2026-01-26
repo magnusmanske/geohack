@@ -183,7 +183,12 @@ impl GeoHack {
         if lang.is_empty() {
             FALLBACK_LANGUAGE.to_string()
         } else {
-            lang
+            // For sub-language codes like "de-DE", fall back to parent language "de"
+            // since sub-language Wikipedia sites typically don't exist
+            lang.split('-')
+                .next()
+                .unwrap_or(FALLBACK_LANGUAGE)
+                .to_string()
         }
     }
 
@@ -465,6 +470,26 @@ mod tests {
         assert_eq!(geohack.fix_language_code("en-US", "en"), "en-us");
         assert_eq!(geohack.fix_language_code("de", "en"), "de");
         assert_eq!(geohack.fix_language_code("123", "en"), "en");
+    }
+
+    #[test]
+    fn test_language_with_fallback() {
+        let mut geohack = GeoHack::new().unwrap();
+
+        // Simple language code should stay as-is
+        geohack.lang = "de".to_string();
+        assert_eq!(geohack.language_with_fallback(), "de");
+
+        // Sub-language code should fall back to parent language
+        geohack.lang = "de-DE".to_string();
+        assert_eq!(geohack.language_with_fallback(), "de");
+
+        geohack.lang = "en-US".to_string();
+        assert_eq!(geohack.language_with_fallback(), "en");
+
+        // Empty language should fall back to "en"
+        geohack.lang = "".to_string();
+        assert_eq!(geohack.language_with_fallback(), "en");
     }
 
     #[test]
