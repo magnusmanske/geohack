@@ -1,83 +1,104 @@
-// TODO use https://docs.rs/lonlat_bng/latest/lonlat_bng/ where possible
+//! Transverse Mercator coordinate transformations.
+//!
+//! Converts latitude/longitude geographical coordinates to various
+//! Transverse Mercator projection systems including:
+//! - UTM (Universal Transverse Mercator)
+//! - OSGB36 (UK Ordnance Survey National Grid)
+//! - CH1903 (Swiss National Grid)
+//!
+//! # References
+//! - <http://www.posc.org/Epicentre.2_2/DataModel/ExamplesofUsage/eu_cs34h.html>
+//! - <http://kanadier.gps-info.de/d-utm-gitter.htm>
+//! - <http://www.gpsy.com/gpsinfo/geotoutm/>
+//! - <http://www.colorado.edu/geography/gcraft/notes/gps/gps_f.html>
+//! - UK Ordnance Survey grid: <http://www.gps.gov.uk/guidecontents.asp>
+//! - Swiss CH1903: <http://www.swisstopo.ch/pub/down/basics/geo/system/swiss_projection_de.pdf>
+//!
+//! # License
+//! Copyright 2005, Egil Kvaleberg <egil@kvaleberg.no>
+//! Converted to Rust 2025 by Magnus Manske <magnusmanske@googlemail.com>
+//!
+//! This program is free software under GPL v2 or later.
 
-/**
- *  Convert latitude longitude geographical coordinates to
- *  Transverse Mercator coordinates.
- *
- *  Uses the WGS-84 ellipsoid by default
- *
- *  See also:
- *  http://www.posc.org/Epicentre.2_2/DataModel/ExamplesofUsage/eu_cs34h.html
- *  http://kanadier.gps-info.de/d-utm-gitter.htm
- *  http://www.gpsy.com/gpsinfo/geotoutm/
- *  http://www.colorado.edu/geography/gcraft/notes/gps/gps_f.html
- *  http://search.cpan.org/src/GRAHAMC/Geo-Coordinates-UTM-0.05/
- *  UK Ordnance Survey grid (OSBG36): http://www.gps.gov.uk/guidecontents.asp
- *  Swiss CH1903: http://www.gps.gov.uk/guidecontents.asp
- *
- *  ----------------------------------------------------------------------
- *
- *  Copyright 2005, Egil Kvaleberg <egil@kvaleberg.no>
- *  Converted to Rust 2005 by <Magnus Manske> <magnusmanske@googlemail.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
-use std::f64::consts::PI;
+/// UTM zone letters for latitude bands (from 80S to 84N).
+const UTM_ZONE_LETTERS: &str = "CCCDEFGHJKLMNPQRSTUVWXXX";
 
-/**
- *  Transverse Mercator transformations
- */
-#[derive(Debug, Clone)]
-pub struct TransverseMercator {
-    northing: f64,
-    easting: f64,
-    zone: String,
+/// Letters for OSGB36 grid references (excludes 'I').
+const OSGB36_LETTERS: &str = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
 
-    /* Reference Ellipsoid, default to WGS-84 */
-    radius: f64,       /* major semi axis = a */
-    eccentricity: f64, /* square of eccentricity */
-
-    /* Flattening = f = (a-b) / a */
-    /* Inverse flattening = 1/f = 298.2572236 */
-    /* Minor semi axis b = a*(1-f) */
-    /* Eccentricity e = sqrt(a^2 - b^2)/a = 0.081819190843 */
-
-    /* Transverse Mercator parameters */
-    scale: f64,
-    easting_offset: f64,
-    northing_offset: f64,
-    northing_offset_south: f64, /* for Southern hemisphere */
+/// Ellipsoid parameters for geodetic calculations.
+#[derive(Debug, Clone, Copy)]
+struct Ellipsoid {
+    /// Major semi-axis (equatorial radius) in meters.
+    radius: f64,
+    /// Square of eccentricity (e^2).
+    eccentricity_sq: f64,
 }
 
-impl Default for TransverseMercator {
-    fn default() -> Self {
-        TransverseMercator {
-            northing: 0.0,
-            easting: 0.0,
-            zone: String::new(),
-            radius: 6378137.0,            /* major semi axis = a */
-            eccentricity: 0.006694379990, /* square of eccentricity */
-            scale: 0.9996,
-            easting_offset: 500000.0,
-            northing_offset: 0.0,
-            northing_offset_south: 10000000.0,
-        }
+impl Ellipsoid {
+    /// WGS-84 ellipsoid (default for GPS and most modern applications).
+    const WGS84: Self = Self {
+        radius: 6_378_137.0,
+        eccentricity_sq: 0.006_694_379_990,
+    };
+
+    /// Airy 1830 ellipsoid (used for OSGB36).
+    const AIRY_1830: Self = Self {
+        radius: 6_377_563.396,
+        eccentricity_sq: 0.006_670_54,
+    };
+
+    /// Computes the meridional arc distance from the equator to given latitude.
+    fn meridional_arc(&self, lat_rad: f64) -> f64 {
+        let e = self.eccentricity_sq;
+        let e2 = e * e;
+        let e3 = e2 * e;
+
+        self.radius
+            * ((1.0 - e / 4.0 - 3.0 * e2 / 64.0 - 5.0 * e3 / 256.0) * lat_rad
+                - (3.0 * e / 8.0 + 3.0 * e2 / 32.0 + 45.0 * e3 / 1024.0) * (2.0 * lat_rad).sin()
+                + (15.0 * e2 / 256.0 + 45.0 * e3 / 1024.0) * (4.0 * lat_rad).sin()
+                - (35.0 * e3 / 3072.0) * (6.0 * lat_rad).sin())
     }
 }
 
-impl TransverseMercator {
+/// Projection parameters for Transverse Mercator.
+#[derive(Debug, Clone, Copy)]
+struct ProjectionParams {
+    scale: f64,
+    easting_offset: f64,
+    northing_offset: f64,
+    /// Additional northing offset for Southern hemisphere.
+    northing_offset_south: f64,
+}
+
+impl ProjectionParams {
+    /// Standard UTM projection parameters.
+    const UTM: Self = Self {
+        scale: 0.9996,
+        easting_offset: 500_000.0,
+        northing_offset: 0.0,
+        northing_offset_south: 10_000_000.0,
+    };
+
+    /// OSGB36 projection parameters.
+    const OSGB36: Self = Self {
+        scale: 0.999_601_3,
+        easting_offset: 400_000.0,
+        northing_offset: -100_000.0,
+        northing_offset_south: 0.0,
+    };
+}
+
+/// Result of a Transverse Mercator projection.
+#[derive(Debug, Clone, Default)]
+pub struct ProjectionResult {
+    northing: f64,
+    easting: f64,
+    zone: String,
+}
+
+impl ProjectionResult {
     pub const fn northing(&self) -> f64 {
         self.northing
     }
@@ -89,371 +110,331 @@ impl TransverseMercator {
     pub fn zone(&self) -> &str {
         &self.zone
     }
+}
+
+/// Transverse Mercator projection calculator.
+///
+/// Converts geographic coordinates (latitude/longitude) to various
+/// Transverse Mercator coordinate systems.
+#[derive(Debug, Clone)]
+pub struct TransverseMercator {
+    result: ProjectionResult,
+    ellipsoid: Ellipsoid,
+    params: ProjectionParams,
+}
+
+impl Default for TransverseMercator {
+    fn default() -> Self {
+        Self {
+            result: ProjectionResult::default(),
+            ellipsoid: Ellipsoid::WGS84,
+            params: ProjectionParams::UTM,
+        }
+    }
+}
+
+impl TransverseMercator {
+    pub const fn northing(&self) -> f64 {
+        self.result.northing
+    }
+
+    pub const fn easting(&self) -> f64 {
+        self.result.easting
+    }
+
+    pub fn zone(&self) -> &str {
+        &self.result.zone
+    }
 
     pub fn set_zone(&mut self, zone: String) {
-        self.zone = zone;
+        self.result.zone = zone;
     }
 
-    /**
-     *  Convert latitude, longitude in decimal degrees to
-     *  UTM Zone, Easting, and Northing
-     */
-    pub fn lat_lon_to_utm(&mut self, latitude: f64, longitude: f64) {
-        self.zone = self.lat_lon_to_utm_zone(latitude, longitude);
-        self.lat_lon_zone_to_utm(latitude, longitude, &self.zone.clone());
+    /// Converts latitude/longitude to UTM coordinates.
+    ///
+    /// Automatically determines the UTM zone based on the coordinates.
+    pub fn set_utm_from_lat_lon(&mut self, latitude: f64, longitude: f64) {
+        self.result.zone = Self::compute_utm_zone(latitude, longitude);
+        self.lat_lon_zone_to_utm(latitude, longitude, &self.result.zone.clone());
     }
 
-    /**
-     *  Find UTM zone from latitude and longitude
-     */
-    pub fn lat_lon_to_utm_zone(&self, latitude: f64, longitude: f64) -> String {
-        let longitude2 = longitude - ((longitude + 180.0) / 360.0).floor() * 360.0;
+    /// Determines the UTM zone for given coordinates.
+    ///
+    /// Handles special cases for Norway (zone 32) and Svalbard (zones 31, 33, 35, 37).
+    pub fn compute_utm_zone(latitude: f64, longitude: f64) -> String {
+        let longitude = Self::normalize_longitude(longitude);
 
-        let zone = if (56.0..64.0).contains(&latitude) && (3.0..12.0).contains(&longitude2) {
-            32
-        } else if (72.0..84.0).contains(&latitude) && (0.0..42.0).contains(&longitude2) {
-            if longitude2 < 9.0 {
-                31
-            } else if longitude2 < 21.0 {
-                33
-            } else if longitude2 < 33.0 {
-                35
-            } else {
-                37
+        // Handle special UTM zone exceptions
+        let zone_number = match (latitude, longitude) {
+            // Norway exception
+            (lat, lon) if (56.0..64.0).contains(&lat) && (3.0..12.0).contains(&lon) => 32,
+            // Svalbard exception
+            (lat, lon) if (72.0..84.0).contains(&lat) && (0.0..42.0).contains(&lon) => {
+                if lon < 9.0 {
+                    31
+                } else if lon < 21.0 {
+                    33
+                } else if lon < 33.0 {
+                    35
+                } else {
+                    37
+                }
             }
-        } else {
-            ((longitude2 + 180.0) / 6.0) as i32 + 1
+            // Standard zone calculation
+            _ => ((longitude + 180.0) / 6.0) as i32 + 1,
         };
 
-        let c = ((latitude + 96.0) / 8.0) as usize;
-        /* 000000000011111111112222 */
-        /* 012345678901234567890134 */
-        let letters = "CCCDEFGHJKLMNPQRSTUVWXXX";
-        let letter = letters.chars().nth(c).unwrap_or('X');
+        let letter_index = ((latitude + 96.0) / 8.0) as usize;
+        let zone_letter = UTM_ZONE_LETTERS
+            .chars()
+            .nth(letter_index.min(UTM_ZONE_LETTERS.len() - 1))
+            .unwrap_or('X');
 
-        format!("{}{}", zone, letter)
+        format!("{zone_number}{zone_letter}")
     }
 
-    /**
-     *  Convert latitude, longitude in decimal degrees to
-     *  UTM Easting and Northing in a specific zone
-     *
-     *  \return false if problems
-     */
+    /// Converts latitude/longitude to UTM coordinates in a specific zone.
+    ///
+    /// Returns `true` if conversion was successful, `false` if coordinates
+    /// are outside the valid UTM range.
     pub fn lat_lon_zone_to_utm(&mut self, latitude: f64, longitude: f64, zone: &str) -> bool {
-        self.lat_lon_origin_to_tm(latitude, longitude, 0.0, Self::utmzone_origin(zone))
+        let origin = Self::zone_central_meridian(zone);
+        self.project_to_tm(latitude, longitude, 0.0, origin)
     }
 
-    /**
-     *  Convert latitude, longitude in decimal degrees to
-     *  OSBG36 Easting and Northing
-     */
+    /// Converts latitude/longitude to OSGB36 (UK National Grid) coordinates.
+    ///
+    /// Returns the grid reference string (e.g., "TQ123456") or empty string
+    /// if coordinates are outside the valid OSGB36 area.
     pub fn lat_lon_to_osgb36(&mut self, latitude: f64, longitude: f64) -> String {
-        /* Airy 1830 ellipsoid */
-        self.radius = 6377563.396;
-        /* inverse flattening 1/f: 299.3249647 */
-        self.eccentricity = 0.00667054; /* square of eccentricity */
+        self.ellipsoid = Ellipsoid::AIRY_1830;
+        self.params = ProjectionParams::OSGB36;
 
-        self.scale = 0.9996013;
-        self.easting_offset = 400000.0;
-        self.northing_offset = -100000.0;
-        self.northing_offset_south = 0.0;
+        const LATITUDE_ORIGIN: f64 = 49.0;
+        const LONGITUDE_ORIGIN: f64 = -2.0;
 
-        let latitude_origin = 49.0;
-        let longitude_origin = -2.0;
-
-        if !self.lat_lon_origin_to_tm(latitude, longitude, latitude_origin, longitude_origin) {
+        if !self.project_to_tm(latitude, longitude, LATITUDE_ORIGIN, LONGITUDE_ORIGIN) {
             return String::new();
         }
 
-        /* fix by Roger W Haworth */
-        let grid_x = (self.easting / 100000.0).floor() as i32;
-        let grid_y = (self.northing / 100000.0).floor() as i32;
-
-        if !(0..=6).contains(&grid_x) || !(0..=12).contains(&grid_y) {
-            /* outside area for OSGB36 */
-            return String::new();
-        }
-
-        /*             0000000000111111111122222 */
-        /*             0123456789012345678901234 */
-        let letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
-
-        let c1_index = (17 - (grid_y / 5) * 5) + (grid_x / 5);
-        let c2_index = (20 - (grid_y % 5) * 5) + (grid_x % 5);
-
-        let c1 = letters.chars().nth(c1_index as usize).unwrap_or('X');
-        let c2 = letters.chars().nth(c2_index as usize).unwrap_or('X');
-
-        let e = format!("{:05}", self.easting as i32 % 100000);
-        let n = format!("{:05}", self.northing as i32 % 100000);
-
-        format!("{}{}{}{}", c1, c2, e, n)
+        self.format_osgb36_reference()
     }
 
-    /**
-     *  Convert latitude, longitude in decimal degrees to
-     *  CH1903 Easting and Northing
-     *  Assumed range is latitude 45.5 .. 48 and logitude 5 - 11
-     *  Code by [[de:Benutzer:Meleager]]
-     */
+    /// Formats the current northing/easting as an OSGB36 grid reference.
+    fn format_osgb36_reference(&self) -> String {
+        let grid_x = (self.result.easting / 100_000.0).floor() as i32;
+        let grid_y = (self.result.northing / 100_000.0).floor() as i32;
+
+        // Check if within valid OSGB36 area
+        if !(0..=6).contains(&grid_x) || !(0..=12).contains(&grid_y) {
+            return String::new();
+        }
+
+        let c1_index = (17 - (grid_y / 5) * 5 + grid_x / 5) as usize;
+        let c2_index = (20 - (grid_y % 5) * 5 + grid_x % 5) as usize;
+
+        let c1 = OSGB36_LETTERS.chars().nth(c1_index).unwrap_or('X');
+        let c2 = OSGB36_LETTERS.chars().nth(c2_index).unwrap_or('X');
+
+        let easting_digits = self.result.easting as i32 % 100_000;
+        let northing_digits = self.result.northing as i32 % 100_000;
+
+        format!("{c1}{c2}{easting_digits:05}{northing_digits:05}")
+    }
+
+    /// Converts latitude/longitude to CH1903 (Swiss National Grid) coordinates.
+    ///
+    /// Uses the approximation formula from the Swiss Federal Office of Topography.
+    /// Valid range: latitude 45.5-48, longitude 5-11.
+    ///
+    /// Returns `true` if conversion was successful, `false` if coordinates
+    /// are outside the valid range.
     pub fn lat_lon_to_ch1903(&mut self, latitude: f64, longitude: f64) -> bool {
         if !(45.5..=48.0).contains(&latitude) || !(5.0..=11.0).contains(&longitude) {
-            /* outside reasonable range */
-            self.easting = 0.0;
-            self.northing = 0.0;
+            self.result.easting = 0.0;
+            self.result.northing = 0.0;
             return false;
         }
 
-        /* Approximation formula according to  */
-        /* http://www.swisstopo.ch/pub/down/basics/geo/system/swiss_projection_de.pdf */
-        /* chapter 4.1, page 11. */
+        // Convert to arc-seconds and normalize to Bern origin
+        let lat_aux = (latitude * 3600.0 - 169_028.66) / 10_000.0;
+        let lon_aux = (longitude * 3600.0 - 26_782.5) / 10_000.0;
 
-        let ps = latitude * 3600.0;
-        let ls = longitude * 3600.0;
+        // Polynomial approximation (Swiss Federal Office of Topography formula)
+        self.result.northing = 200_147.07
+            + 308_807.95 * lat_aux
+            + 3_745.25 * lon_aux.powi(2)
+            + 76.63 * lat_aux.powi(2)
+            - 194.56 * lon_aux.powi(2) * lat_aux
+            + 119.79 * lat_aux.powi(3);
 
-        let pp = (ps - 169028.66) / 10000.0;
-        let lp = (ls - 26782.5) / 10000.0;
-
-        self.northing = 200147.07 + 308807.95 * pp + 3745.25 * lp * lp + 76.63 * pp * pp
-            - 194.56 * lp * lp * pp
-            + 119.79 * pp * pp * pp;
-
-        self.easting = 600072.37 + 211455.93 * lp
-            - 10938.51 * lp * pp
-            - 0.36 * lp * pp * pp
-            - 44.54 * lp * lp * lp;
+        self.result.easting = 600_072.37 + 211_455.93 * lon_aux
+            - 10_938.51 * lon_aux * lat_aux
+            - 0.36 * lon_aux * lat_aux.powi(2)
+            - 44.54 * lon_aux.powi(3);
 
         true
     }
 
-    /*	Kvalberg code
-        function LatLon2CH1903( $latitude, $longitude )
-        {
-            if ($latitude < 45.5 or $latitude > 48
-             or $longitude < 5.0 or $longitude > 11) {
-                // outside reasonable range
-                $this->Easting = "";
-                $this->Northing = "";
-                return false;
-            }
-
-            // ellipsoid: Bessel 1841
-            $this->Radius = 6377397.155;
-            // 299.1528128
-            $this->Eccentricity = 0.006674372;
-
-            $this->Scale = 1.0;
-            $this->Easting_Offset =   600000.0;
-            $this->Northing_Offset =  200000.0;
-            $this->Northing_Offset_South = 0.0;
-
-            $latitude_origin  = 46.95240555556;
-            $longitude_origin =  7.43958333333;
-
-            $this->LatLonOrigin2TM( $latitude, $longitude,
-                    $latitude_origin, $longitude_origin );
-        }
-    */
-
-    fn utmzone_origin(zone: &str) -> f64 {
-        let zone_num = zone
+    /// Computes the central meridian for a UTM zone.
+    fn zone_central_meridian(zone: &str) -> f64 {
+        let zone_num: i32 = zone
             .chars()
             .take_while(|c| c.is_ascii_digit())
             .collect::<String>()
-            .parse::<i32>()
+            .parse()
             .unwrap_or(1);
 
         (zone_num - 1) as f64 * 6.0 - 180.0 + 3.0
     }
 
-    fn find_m(&self, lat_rad: f64) -> f64 {
-        let e = self.eccentricity;
-
-        self.radius
-            * ((1.0 - e / 4.0 - 3.0 * e * e / 64.0 - 5.0 * e * e * e / 256.0) * lat_rad
-                - (3.0 * e / 8.0 + 3.0 * e * e / 32.0 + 45.0 * e * e * e / 1024.0)
-                    * (2.0 * lat_rad).sin()
-                + (15.0 * e * e / 256.0 + 45.0 * e * e * e / 1024.0) * (4.0 * lat_rad).sin()
-                - (35.0 * e * e * e / 3072.0) * (6.0 * lat_rad).sin())
-    }
-
-    fn deg2rad(deg: f64) -> f64 {
-        (PI / 180.0) * deg
-    }
-
-    /**
-     *  Convert latitude, longitude in decimal degrees to
-     *  TM Easting and Northing based on a specified origin
-     *
-     *  \return false if problems
-     */
-    pub fn lat_lon_origin_to_tm(
+    /// Core Transverse Mercator projection calculation.
+    ///
+    /// Projects geographic coordinates to Transverse Mercator using the
+    /// current ellipsoid and projection parameters.
+    fn project_to_tm(
         &mut self,
         latitude: f64,
         longitude: f64,
         latitude_origin: f64,
         longitude_origin: f64,
     ) -> bool {
+        // Validate input ranges
         if !(-180.0..=180.0).contains(&longitude) || !(-80.0..=84.0).contains(&latitude) {
-            // UTM not defined in this range
             return false;
         }
 
-        let longitude2 = longitude - ((longitude + 180.0) / 360.0).floor() * 360.0;
+        let longitude = Self::normalize_longitude(longitude);
+        let lat_rad = latitude.to_radians();
 
-        let lat_rad = Self::deg2rad(latitude);
-
-        let e = self.eccentricity;
+        let e = self.ellipsoid.eccentricity_sq;
         let e_prime_sq = e / (1.0 - e);
 
-        let v = self.radius / (1.0 - e * lat_rad.sin() * lat_rad.sin()).sqrt();
-        let t_val = lat_rad.tan().powi(2);
-        let c = e_prime_sq * lat_rad.cos().powi(2);
-        let a = Self::deg2rad(longitude2 - longitude_origin) * lat_rad.cos();
-        let m = self.find_m(lat_rad);
+        let sin_lat = lat_rad.sin();
+        let cos_lat = lat_rad.cos();
+        let tan_lat = lat_rad.tan();
 
+        // Radius of curvature in prime vertical
+        let n = self.ellipsoid.radius / (1.0 - e * sin_lat.powi(2)).sqrt();
+
+        let t = tan_lat.powi(2);
+        let c = e_prime_sq * cos_lat.powi(2);
+        let a = (longitude - longitude_origin).to_radians() * cos_lat;
+
+        let m = self.ellipsoid.meridional_arc(lat_rad);
         let m0 = if latitude_origin != 0.0 {
-            self.find_m(Self::deg2rad(latitude_origin))
+            self.ellipsoid.meridional_arc(latitude_origin.to_radians())
         } else {
             0.0
         };
 
-        let northing = self.northing_offset
-            + self.scale
+        // Compute northing
+        let northing = self.params.northing_offset
+            + self.params.scale
                 * ((m - m0)
-                    + v * lat_rad.tan()
-                        * (a * a / 2.0
-                            + (5.0 - t_val + 9.0 * c + 4.0 * c * c) * a.powi(4) / 24.0
-                            + (61.0 - 58.0 * t_val + t_val * t_val + 600.0 * c
-                                - 330.0 * e_prime_sq)
+                    + n * tan_lat
+                        * (a.powi(2) / 2.0
+                            + (5.0 - t + 9.0 * c + 4.0 * c.powi(2)) * a.powi(4) / 24.0
+                            + (61.0 - 58.0 * t + t.powi(2) + 600.0 * c - 330.0 * e_prime_sq)
                                 * a.powi(6)
                                 / 720.0));
 
-        let easting = self.easting_offset
-            + self.scale
-                * v
-                * (a + (1.0 - t_val + c) * a.powi(3) / 6.0
-                    + (5.0 - 18.0 * t_val + t_val.powi(2) + 72.0 * c - 58.0 * e_prime_sq)
-                        * a.powi(5)
+        // Compute easting
+        let easting = self.params.easting_offset
+            + self.params.scale
+                * n
+                * (a + (1.0 - t + c) * a.powi(3) / 6.0
+                    + (5.0 - 18.0 * t + t.powi(2) + 72.0 * c - 58.0 * e_prime_sq) * a.powi(5)
                         / 120.0);
 
-        // FIXME: Uze zone_letter
-        // if (ord($zone_letter) < ord('N'))
-        let northing = if latitude < 0.0 {
-            northing + self.northing_offset_south
+        // Apply southern hemisphere offset if needed
+        self.result.northing = if latitude < 0.0 {
+            northing + self.params.northing_offset_south
         } else {
             northing
         };
-
-        self.northing = northing;
-        self.easting = easting;
+        self.result.easting = easting;
 
         true
     }
+
+    /// Normalizes longitude to the range [-180, 180).
+    fn normalize_longitude(longitude: f64) -> f64 {
+        longitude - ((longitude + 180.0) / 360.0).floor() * 360.0
+    }
 }
 
-// Additional structures for specialized coordinate systems
-#[derive(Debug, Clone)]
+/// OSGB36 (UK Ordnance Survey National Grid) coordinate converter.
+///
+/// Wraps `TransverseMercator` with OSGB36-specific parameters.
+#[derive(Debug, Clone, Default)]
 pub struct OSGB36 {
     tm: TransverseMercator,
-    northing: f64,
-    easting: f64,
-}
-
-impl Default for OSGB36 {
-    fn default() -> Self {
-        let tm = TransverseMercator {
-            radius: 6377563.396,      // Airy 1830 ellipsoid
-            eccentricity: 0.00667054, // square of eccentricity
-            scale: 0.9996013,         // inverse flattening 1/f: 299.3249647
-            easting_offset: 400000.0,
-            northing_offset: -100000.0,
-            northing_offset_south: 0.0,
-            ..Default::default()
-        };
-        OSGB36 {
-            tm,
-            northing: 0.0,
-            easting: 0.0,
-        }
-    }
 }
 
 impl OSGB36 {
     pub const fn northing(&self) -> f64 {
-        self.northing
+        self.tm.result.northing
     }
 
     pub const fn easting(&self) -> f64 {
-        self.easting
+        self.tm.result.easting
     }
 
+    /// Converts latitude/longitude to OSGB36 coordinates.
+    ///
+    /// Returns the grid reference string or empty string if outside valid area.
     pub fn lat_lon_to_osgb36(&mut self, latitude: f64, longitude: f64) -> String {
-        let result = self.tm.lat_lon_to_osgb36(latitude, longitude);
-        self.northing = self.tm.northing();
-        self.easting = self.tm.easting();
-        result
+        self.tm.lat_lon_to_osgb36(latitude, longitude)
     }
 }
 
-#[derive(Debug, Clone)]
+/// CH1903 (Swiss National Grid) coordinate converter.
+///
+/// Wraps `TransverseMercator` with CH1903-specific parameters.
+#[derive(Debug, Clone, Default)]
 pub struct CH1903 {
     tm: TransverseMercator,
-    northing: f64,
-    easting: f64,
-}
-
-impl Default for CH1903 {
-    fn default() -> Self {
-        CH1903 {
-            tm: TransverseMercator::default(),
-            northing: 0.0,
-            easting: 0.0,
-        }
-    }
 }
 
 impl CH1903 {
     pub const fn northing(&self) -> f64 {
-        self.northing
+        self.tm.result.northing
     }
 
     pub const fn easting(&self) -> f64 {
-        self.easting
+        self.tm.result.easting
     }
 
+    /// Converts latitude/longitude to CH1903 coordinates.
+    ///
+    /// Returns `true` if coordinates are within valid Swiss range.
     pub fn lat_lon_to_ch1903(&mut self, latitude: f64, longitude: f64) -> bool {
-        let result = self.tm.lat_lon_to_ch1903(latitude, longitude);
-        self.northing = self.tm.northing();
-        self.easting = self.tm.easting();
-        result
+        self.tm.lat_lon_to_ch1903(latitude, longitude)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
 
     #[test]
     fn test_utm_zone_calculation() {
-        let tm = TransverseMercator::default();
-
-        // Test standard zone calculation
-        let zone1 = tm.lat_lon_to_utm_zone(40.0, -74.0);
+        // Standard zone calculation - New York area
+        let zone1 = TransverseMercator::compute_utm_zone(40.0, -74.0);
         assert!(zone1.starts_with("18"));
 
-        // Test equator
-        let zone2 = tm.lat_lon_to_utm_zone(0.0, 0.0);
+        // Equator at prime meridian
+        let zone2 = TransverseMercator::compute_utm_zone(0.0, 0.0);
         assert!(zone2.starts_with("31"));
     }
 
     #[test]
     fn test_utm_conversion() {
         let mut tm = TransverseMercator::default();
-        tm.lat_lon_to_utm(40.7128, -74.0060);
+        tm.set_utm_from_lat_lon(40.7128, -74.0060);
 
-        // Check that values are set
         assert!(tm.northing() > 0.0);
         assert!(tm.easting() > 0.0);
         assert!(!tm.zone().is_empty());
@@ -463,7 +444,7 @@ mod tests {
     fn test_osgb36_conversion() {
         let mut tm = TransverseMercator::default();
 
-        // Test London coordinates
+        // London coordinates
         let result = tm.lat_lon_to_osgb36(51.5074, -0.1278);
         assert!(!result.is_empty());
     }
@@ -472,27 +453,42 @@ mod tests {
     fn test_ch1903_conversion() {
         let mut tm = TransverseMercator::default();
 
-        // Test Swiss coordinates (Bern)
-        let result1 = tm.lat_lon_to_ch1903(46.9480, 7.4474);
-        assert!(result1);
+        // Bern, Switzerland
+        assert!(tm.lat_lon_to_ch1903(46.9480, 7.4474));
         assert!(tm.northing() > 0.0);
         assert!(tm.easting() > 0.0);
 
-        // Test out of range
-        let result2 = tm.lat_lon_to_ch1903(50.0, 0.0);
-        assert!(!result2);
+        // Outside valid range
+        assert!(!tm.lat_lon_to_ch1903(50.0, 0.0));
     }
 
     #[test]
     fn test_deg_rad_conversion() {
-        fn rad2deg(rad: f64) -> f64 {
-            rad * (180.0 / PI)
-        }
-
         let deg = 45.0;
-        let rad = TransverseMercator::deg2rad(deg);
-        let back = rad2deg(rad);
+        let rad = f64::to_radians(deg);
+        let back = rad * 180.0 / PI;
 
         assert!((deg - back).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_normalize_longitude() {
+        assert!((TransverseMercator::normalize_longitude(0.0) - 0.0).abs() < 1e-10);
+        assert!((TransverseMercator::normalize_longitude(180.0) - (-180.0)).abs() < 1e-10);
+        assert!((TransverseMercator::normalize_longitude(-180.0) - (-180.0)).abs() < 1e-10);
+        assert!((TransverseMercator::normalize_longitude(360.0) - 0.0).abs() < 1e-10);
+        assert!((TransverseMercator::normalize_longitude(540.0) - (-180.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_ellipsoid_meridional_arc() {
+        let wgs84 = Ellipsoid::WGS84;
+
+        // At equator, meridional arc should be 0
+        assert!((wgs84.meridional_arc(0.0) - 0.0).abs() < 1e-10);
+
+        // At 45 degrees, should be approximately half the distance to pole
+        let arc_45 = wgs84.meridional_arc(45.0_f64.to_radians());
+        assert!(arc_45 > 4_900_000.0 && arc_45 < 5_100_000.0);
     }
 }

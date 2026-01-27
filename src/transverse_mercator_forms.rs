@@ -19,8 +19,8 @@ impl TransverseMercatorForms {
 
         /* standard UTM */
         let mut utm = TransverseMercator::default();
-        utm.lat_lon_to_utm(p.latdeg(), p.londeg());
-        utm.set_zone(utm.lat_lon_to_utm_zone(p.latdeg(), p.londeg()));
+        utm.set_utm_from_lat_lon(p.latdeg(), p.londeg());
+        utm.set_zone(TransverseMercator::compute_utm_zone(p.latdeg(), p.londeg()));
 
         /* fixed UTM as used by iNatur */
         let mut utm33 = TransverseMercator::default();
