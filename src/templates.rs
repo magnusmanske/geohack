@@ -16,10 +16,19 @@ pub struct Template {
     expires: Option<Instant>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Templates {
     templates: Arc<RwLock<HashMap<String, Template>>>,
-    // loading: Arc<Mutex<bool>>,
+    client: reqwest::Client,
+}
+
+impl Default for Templates {
+    fn default() -> Self {
+        Self {
+            templates: Arc::new(RwLock::new(HashMap::new())),
+            client: Self::build_reqwest_client().expect("Failed to build reqwest client"),
+        }
+    }
 }
 
 impl Templates {
@@ -43,16 +52,10 @@ impl Templates {
             return Ok(template.html.clone());
         }
 
-        // Prevent other requests from loading templates while this one is loading.
-        // This should be done per key, but I can't be bothered right now.
-        // let _lock = self.loading.lock().await;
-
-        let client = Self::get_reqwest_client()?;
-
         let mut pagename = "Template:GeoTemplate".to_string();
         if !globe.is_empty() && globe != "earth" {
             pagename.push('/');
-            pagename.push_str(&globe.replace("&", "%26"));
+            pagename.push_str(&urlencoding::encode(globe));
         }
         if use_sandbox {
             pagename += "/sandbox";
@@ -65,7 +68,7 @@ impl Templates {
             format!("http://{language}.wikipedia.org/w/index.php?title={pagename}&useskin=monobook")
         };
 
-        if let Ok(response) = client.get(&request_url).send().await
+        if let Ok(response) = self.client.get(&request_url).send().await
             && let Ok(html) = response.text().await
         {
             self.set_template(&caching_key, &html).await?;
@@ -76,7 +79,7 @@ impl Templates {
         let request_url_fallback = format!(
             "http://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
-        let response = client.get(&request_url_fallback).send().await?;
+        let response = self.client.get(&request_url_fallback).send().await?;
         let html = response.text().await?;
         self.set_template(&caching_key, &html).await?;
         Ok(html)
@@ -93,7 +96,7 @@ impl Templates {
         Ok(())
     }
 
-    fn get_reqwest_client() -> Result<reqwest::Client> {
+    fn build_reqwest_client() -> Result<reqwest::Client> {
         let client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::limited(10))

@@ -34,11 +34,11 @@ use crate::misc_map_source_values::MiscMapSourceValues;
 use crate::transverse_mercator_forms::TransverseMercatorForms;
 use aho_corasick::AhoCorasick;
 use anyhow::Result;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// Default scales for different location types
-static DEFAULT_SCALES: Lazy<HashMap<&'static str, i32>> = Lazy::new(|| {
+static DEFAULT_SCALES: LazyLock<HashMap<&'static str, i32>> = LazyLock::new(|| {
     HashMap::from([
         ("country", 10_000_000),    // 10 mill
         ("satellite", 10_000_000),  // 10 mill

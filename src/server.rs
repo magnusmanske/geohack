@@ -85,7 +85,7 @@ async fn geohack(
     );
     let mut geohack = GeoHack::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     geohack
-        .init_from_query(query.clone())
+        .init_from_query(&query)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let language = geohack.lang().trim().to_ascii_lowercase();

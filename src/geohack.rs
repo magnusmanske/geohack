@@ -12,6 +12,7 @@ use crate::regex_patterns::{
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
+use std::fmt::Write;
 
 /// Main GeoHack application struct
 #[derive(Debug, Clone)]
@@ -82,7 +83,7 @@ impl GeoHack {
     }
 
     /// Fix language code
-    pub fn fix_language_code(&self, lang: &str, default: &str) -> String {
+    pub fn fix_language_code(lang: &str, default: &str) -> String {
         let lang = lang.trim().to_lowercase();
         RE_FIX_LANGUAGE_CODE
             .captures(&lang)
@@ -91,7 +92,10 @@ impl GeoHack {
     }
 
     /// Get a div section from HTML
-    pub fn get_div_section(&self, html: &str, node_id: &str, begin: usize) -> String {
+    pub fn get_div_section(html: &str, node_id: &str, begin: usize) -> String {
+        const DIV_OPEN: &str = "<div";
+        const DIV_CLOSE: &str = "</div>";
+
         let search_str = format!("<div id=\"{}\"", node_id);
         if let Some(begin_pos) = html[begin..].find(&search_str) {
             let begin = begin + begin_pos;
@@ -99,33 +103,33 @@ impl GeoHack {
             let mut start = begin;
 
             loop {
-                let next_end = html[end + 6..].find("</div>");
-                let next_start = html[start + 4..].find("<div");
+                let next_end = html[end + DIV_CLOSE.len()..].find(DIV_CLOSE);
+                let next_start = html[start + DIV_OPEN.len()..].find(DIV_OPEN);
 
                 match (next_end, next_start) {
                     (Some(e), Some(s)) => {
-                        end = end + 6 + e;
-                        start = start + 4 + s;
+                        end = end + DIV_CLOSE.len() + e;
+                        start = start + DIV_OPEN.len() + s;
                         if start >= end {
                             break;
                         }
                     }
                     (Some(e), None) => {
-                        end = end + 6 + e;
+                        end = end + DIV_CLOSE.len() + e;
                         break;
                     }
                     _ => return String::new(),
                 }
             }
 
-            html[begin..=end + 5].to_string()
+            html[begin..end + DIV_CLOSE.len()].to_string()
         } else {
             String::new()
         }
     }
 
     /// Make a link for language switching
-    pub fn make_link(&self, lang: &str, params: &str, pagename: &str) -> String {
+    pub fn make_link(lang: &str, params: &str, pagename: &str) -> String {
         let mut query = if !pagename.is_empty() {
             format!("&pagename={}", pagename)
         } else {
@@ -148,10 +152,10 @@ impl GeoHack {
         }
     }
 
-    pub fn init_from_query(&mut self, query: QueryParameters) -> Result<()> {
+    pub fn init_from_query(&mut self, query: &QueryParameters) -> Result<()> {
         let lang = Self::sanitize_html(query.language().unwrap_or("en"));
         let params = Self::sanitize_html(query.params());
-        self.lang = self.fix_language_code(&lang, "");
+        self.lang = Self::fix_language_code(&lang, "");
         self.params = html_escape::encode_text(&params).to_string();
 
         if self.params.is_empty() {
@@ -214,31 +218,36 @@ impl GeoHack {
         }
     }
 
-    /// Build the output HTML
-    pub fn build_output(&mut self) -> String {
-        let lat = MinSecResult::new(self.map_sources.p().latdeg());
-        let lon = MinSecResult::new(self.map_sources.p().londeg());
-
-        // Build title
-        let mytitle = if !self.title.is_empty() {
+    fn build_title(&self) -> String {
+        if !self.title.is_empty() {
             format!("GeoHack - {}", self.title)
         } else if !self.pagename.is_empty() {
             format!("GeoHack - {}", self.pagename.replace('_', " "))
         } else {
+            let lat = MinSecResult::new(self.map_sources.p().latdeg());
+            let lon = MinSecResult::new(self.map_sources.p().londeg());
             format!("GeoHack ({}; {})", lat.deg(), lon.deg())
-        };
+        }
+    }
 
-        // Get logo URL
-        let logo_url = self
-            .logo_urls
+    fn logo_url(&self) -> &str {
+        static EMPTY: String = String::new();
+        self.logo_urls
             .get(&self.globe)
             .or_else(|| self.logo_urls.get(""))
-            .unwrap_or(&String::new())
-            .clone();
+            .unwrap_or(&EMPTY)
+    }
+
+    /// Build the output HTML
+    pub fn build_output(&mut self) -> String {
+        let mytitle = self.build_title();
+        let logo_url = self.logo_url();
 
         // Build HTML output
         let mut html = String::new();
-        html.push_str(&format!(r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        let _ = write!(
+            html,
+            r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml"><head>
 <title>{}</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
@@ -253,7 +262,9 @@ impl GeoHack {
 
     <div id="mw_main" style="margin-top:2em;">
 
-<div id="mw_contentwrapper"><div id="mw_content">"#, mytitle, self.lang, mytitle));
+<div id="mw_contentwrapper"><div id="mw_content">"#,
+            mytitle, self.lang, mytitle
+        );
 
         // Add zoom warning if needed
         if !self.nlzoom.is_empty() {
@@ -280,13 +291,14 @@ Waarschuwing:
         );
 
         // Add logo
-        html.push_str(&format!(
+        let _ = write!(
+            html,
             r#"
 <div class="portlet">
 <div style="background:#000 url({}) center no-repeat; height:150px;"></div>
 </div>"#,
             logo_url
-        ));
+        );
 
         html.push_str(&self.actions);
 
@@ -349,13 +361,13 @@ Waarschuwing:
         let mut final_content = processed_content.clone();
         if let Some(region) = &self.region_name {
             let locmaps =
-                self.get_div_section(&processed_content, &format!("GEOTEMPLATE-{}", region), 0);
-            let locinsert = self.get_div_section(&processed_content, "GEOTEMPLATE-LOCAL", 0);
+                Self::get_div_section(&processed_content, &format!("GEOTEMPLATE-{}", region), 0);
+            let locinsert = Self::get_div_section(&processed_content, "GEOTEMPLATE-LOCAL", 0);
 
             if !locmaps.is_empty() && !locinsert.is_empty() {
                 final_content = final_content.replace(&locmaps, "");
                 final_content = final_content.replace(&locinsert, &locmaps);
-                let regions_div = self.get_div_section(&final_content, "GEOTEMPLATE-REGIONS", 0);
+                let regions_div = Self::get_div_section(&final_content, "GEOTEMPLATE-REGIONS", 0);
                 final_content = final_content.replace(&regions_div, "");
             }
         }
@@ -379,10 +391,10 @@ Waarschuwing:
             .replace(r#" role="navigation""#, "")
             .replace(r#" class="portlet""#, "");
 
-        let actions_section = self.get_div_section(&page, "p-cactions", 0);
+        let actions_section = Self::get_div_section(&page, "p-cactions", 0);
         let actions = actions_section.replace(r#"id="p-cactions""#, "");
 
-        let lang_section = self.get_div_section(&page, "p-lang", 0);
+        let lang_section = Self::get_div_section(&page, "p-lang", 0);
         let theparams_clone = self.params.to_string();
         let r_pagename_clone = self.pagename.to_string();
 
@@ -391,38 +403,34 @@ Waarschuwing:
                 let lang_match = caps.get(2).map_or("", |m| m.as_str());
                 format!(
                     r#" href="{}""#,
-                    self.make_link(lang_match, &theparams_clone, &r_pagename_clone)
+                    Self::make_link(lang_match, &theparams_clone, &r_pagename_clone)
                 )
             })
             .to_string();
 
-        // Remove edit links - loop until no more editsection spans are found
-        loop {
-            let original_page = page.clone();
+        // Remove edit links — single pass, no cloning
+        {
+            const EDIT_OPEN: &str = r#"<span class="editsection""#;
+            const EDIT_CLOSE: &str = "</span>";
 
-            if let Some(pos) = page.find(r#"<span class="editsection""#) {
-                let (before, after) = page.split_at(pos);
-                let (before, after) = (before.to_string(), after.to_string());
-                page = before.to_string();
+            let mut result = String::with_capacity(page.len());
+            let mut search_from = 0;
 
-                // Find the closing </span> tag
-                if let Some(end_pos) = after.find("</span>") {
-                    // Skip past the </span> tag
-                    page.push_str(&after[end_pos + 7..]);
+            while let Some(start) = page[search_from..].find(EDIT_OPEN) {
+                let abs_start = search_from + start;
+                result.push_str(&page[search_from..abs_start]);
+
+                if let Some(end) = page[abs_start..].find(EDIT_CLOSE) {
+                    search_from = abs_start + end + EDIT_CLOSE.len();
                 } else {
-                    // If no closing tag found, restore original and break
-                    page = original_page;
+                    // No closing tag — keep rest as-is
+                    search_from = abs_start;
                     break;
                 }
-            } else {
-                // No more editsection spans found
-                break;
             }
 
-            // Check if page hasn't changed (equivalent to $op != $page)
-            if original_page == page {
-                break;
-            }
+            result.push_str(&page[search_from..]);
+            page = result;
         }
 
         // Build the page - extract content between markers
@@ -465,18 +473,21 @@ Waarschuwing:
     }
 
     fn process_region_name(end: &str) -> Option<String> {
-        let mut region = end.to_uppercase();
-        if let Some(pos) = region.find('-') {
-            region = region[..pos].to_string();
+        let end = end.trim();
+        if end.is_empty() {
+            return None;
         }
-        if let Some(pos) = region.find('_') {
-            region = region[..pos].to_string();
-        }
-        region = region.trim().to_string();
-        if !region.is_empty() {
-            Some(region)
-        } else {
+        // Find the earliest delimiter (either '-' or '_') to truncate at
+        let truncate_at = [end.find('-'), end.find('_')]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(end.len());
+        let region = end[..truncate_at].to_uppercase();
+        if region.is_empty() {
             None
+        } else {
+            Some(region)
         }
     }
 }
@@ -489,10 +500,9 @@ mod tests {
 
     #[test]
     fn test_fix_language_code() {
-        let geohack = GeoHack::new().unwrap();
-        assert_eq!(geohack.fix_language_code("en-US", "en"), "en-us");
-        assert_eq!(geohack.fix_language_code("de", "en"), "de");
-        assert_eq!(geohack.fix_language_code("123", "en"), "en");
+        assert_eq!(GeoHack::fix_language_code("en-US", "en"), "en-us");
+        assert_eq!(GeoHack::fix_language_code("de", "en"), "de");
+        assert_eq!(GeoHack::fix_language_code("123", "en"), "en");
     }
 
     #[test]
@@ -517,8 +527,7 @@ mod tests {
 
     #[test]
     fn test_make_link() {
-        let geohack = GeoHack::new().unwrap();
-        let link = geohack.make_link("en", "40.7_N_74.0_W", "Test_Page");
+        let link = GeoHack::make_link("en", "40.7_N_74.0_W", "Test_Page");
         assert_eq!(link, "/en/40.7_N_74.0_W?pagename=Test_Page");
     }
 
@@ -560,7 +569,7 @@ mod tests {
         let templates = Templates::default();
         templates.seed_test_cases().await?;
         let mut geohack = GeoHack::new()?;
-        geohack.init_from_query(query.clone())?;
+        geohack.init_from_query(&query)?;
         let language = geohack.lang().trim().to_ascii_lowercase();
         let globe = geohack.globe().trim().to_ascii_lowercase();
         let template_content = templates.load(&language, &globe, &query, false).await?;
