@@ -436,7 +436,7 @@ Waarschuwing:
                     page = page[..end_pos].to_string();
                 }
             }
-        } else {
+        } else if page.contains("<!-- bodytext -->") {
             // Alternative: use bodytext markers
             if let Some(pos) = page.find("<!-- bodytext -->") {
                 page = page[pos + 17..].to_string(); // 17 is the length of "<!-- bodytext -->"
@@ -444,6 +444,20 @@ Waarschuwing:
                 if let Some(end_pos) = page.find("<!-- /bodytext -->") {
                     page = page[..end_pos].to_string();
                 }
+            }
+        } else if let Some(pos) = page.find(r#"<div id="mw-content-text"#) {
+            // Modern MediaWiki (no comment markers): extract from the
+            // mw-content-text div and stop before the printfooter /
+            // catlinks / column-one sidebar that follow it.
+            if let Some(tag_end) = page[pos..].find('>') {
+                page = page[pos + tag_end + 1..].to_string();
+            }
+            if let Some(end_pos) = page.find(r#"<div class="printfooter"#) {
+                page = page[..end_pos].to_string();
+            } else if let Some(end_pos) = page.find(r#"<div id="catlinks"#) {
+                page = page[..end_pos].to_string();
+            } else if let Some(end_pos) = page.find(r#"<div id="column-one"#) {
+                page = page[..end_pos].to_string();
             }
         }
 
