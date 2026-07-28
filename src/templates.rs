@@ -80,19 +80,30 @@ impl Templates {
             )
         };
 
-        if let Ok(response) = self.client.get(&request_url).send().await
-            && let Ok(html) = response.text().await
-        {
-            return Ok(html.into());
+        if let Some(html) = self.fetch_page(&request_url).await {
+            return Ok(html);
         }
 
-        // Fallback
+        // Fall back to the English template, localized via uselang, when the
+        // wiki has no GeoTemplate of its own. MediaWiki answers 404 with a
+        // "page does not exist" body, which must not be used as a template.
+        tracing::info!(language, %request_url, "GeoTemplate unavailable, falling back to en");
         let request_url_fallback = format!(
             "https://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
-        let response = self.client.get(&request_url_fallback).send().await?;
-        let html = response.text().await?;
-        Ok(html.into())
+        self.fetch_page(&request_url_fallback)
+            .await
+            .ok_or_else(|| anyhow!("Could not fetch {pagename} (tried {language} and en)"))
+    }
+
+    /// Fetch a page, returning `None` for transport errors and for any
+    /// non-success HTTP status (notably 404 for a missing template)
+    async fn fetch_page(&self, url: &str) -> Option<Arc<str>> {
+        let response = self.client.get(url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        Some(response.text().await.ok()?.into())
     }
 
     fn build_reqwest_client() -> Result<reqwest::Client> {

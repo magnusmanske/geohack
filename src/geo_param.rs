@@ -475,6 +475,13 @@ mod tests {
         let mut geo2 = GeoParam::new("40_N_74_W_region:CA-ON").unwrap();
         let attr2 = geo2.get_attr();
         assert_eq!(attr2.get("region"), Some(&"CA-ON".to_string())); // Ontario, not CA-EN
+
+        // Country codes containing 'O' must not become 'E' (GitHub issue #1):
+        // Norway, Bolivia, Dominican Republic
+        for code in ["NO", "BO", "DO"] {
+            let mut geo_o = GeoParam::new(&format!("40_N_74_W_region:{code}")).unwrap();
+            assert_eq!(geo_o.get_attr().get("region"), Some(&code.to_string()));
+        }
     }
 
     #[test]
