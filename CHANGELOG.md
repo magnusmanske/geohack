@@ -12,7 +12,14 @@
 - Template cache is now bounded (100 entries), preventing memory exhaustion
   via arbitrary cache keys.
 
+### Added
+- Dark mode, following the OS/browser preference
+  (`prefers-color-scheme`). Light mode is unchanged. (#3)
+
 ### Fixed
+- Wikis without their own `Template:GeoTemplate` now fall back to the English
+  template instead of rendering MediaWiki's "page does not exist" body: a 404
+  response was being used as the template. (#4)
 - OSGB36 output now applies the official OSTN15 datum transformation
   (WGS84 → OSGB36) via the `lonlat_bng` crate. Previous values, inherited
   from the PHP original, skipped the datum shift and were ~100 m off across

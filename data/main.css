@@ -1148,3 +1148,101 @@ pre {
 @media screen and (min-width: 48em) {
 	.mobileonly { display:none; }
 }
+
+/*
+ * Dark mode (GitHub issue #3).
+ *
+ * Opt-in via the OS/browser setting only; light mode is untouched.
+ *
+ * The page content comes from the on-wiki Template:GeoTemplate and carries
+ * inline `background:` colours (light greys/blues) without a matching
+ * `color:`. Rather than enumerating those colours, any inline background
+ * inside the content area is neutralised to a dark tone, so new colours added
+ * on-wiki cannot produce unreadable light-on-light text.
+ */
+@media (prefers-color-scheme: dark) {
+	body {
+		background-color: #181818;
+		color: #e6e6e6;
+	}
+
+	#mw_header {
+		background-color: #00121f;
+	}
+
+	#mw_content {
+		background-color: #202020;
+		border-color: #3a3a3a;
+	}
+
+	#mw_portlets {
+		background-color: #181818;
+		border-right-color: #3a3a3a;
+	}
+
+	/* Neutralise decorative inline backgrounds from the wiki template */
+	#mw_content [style*="background"] {
+		background: #2b2b2b !important;
+	}
+
+	/* Light surfaces defined by class further up this stylesheet */
+	.portlet h5,
+	#toctitle {
+		background-color: #2f2f2f;
+		color: #e6e6e6;
+	}
+
+	.toc,
+	.catlinks,
+	div.thumbinner,
+	table.gallery,
+	.editExternally {
+		background-color: #262626;
+		border-color: #4a4a4a;
+		color: #e6e6e6;
+	}
+
+	#footer {
+		background: #181818;
+		color: #b8b8b8;
+	}
+
+	#mw_content table,
+	#mw_content th,
+	#mw_content td {
+		border-color: #4a4a4a !important;
+	}
+
+	a {
+		color: #7cb7e8;
+	}
+
+	a:visited {
+		color: #b09be0;
+	}
+
+	a:active {
+		color: #faa700;
+	}
+
+	a.stub {
+		color: #e08ba0;
+	}
+
+	a.new,
+	a.new:visited {
+		color: #ff7b72;
+	}
+
+	hr {
+		border-color: #3a3a3a;
+	}
+
+	textarea,
+	input,
+	select {
+		background-color: #2b2b2b;
+		color: #e6e6e6;
+		border: 1px solid #4a4a4a;
+	}
+}
