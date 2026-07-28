@@ -156,7 +156,9 @@ impl GeoHack {
         let lang = Self::sanitize_html(query.language().unwrap_or("en"));
         let params = Self::sanitize_html(query.params());
         self.lang = Self::fix_language_code(&lang, "");
-        self.params = html_escape::encode_text(&params).to_string();
+        // encode_quoted_attribute escapes quotes as well as &<>, because these
+        // values also end up inside href="..." attributes in the template.
+        self.params = html_escape::encode_quoted_attribute(&params).to_string();
 
         if self.params.is_empty() {
             return Err(anyhow!(
@@ -177,10 +179,10 @@ impl GeoHack {
             .unwrap_or_default();
 
         let pagename = Self::sanitize_html(query.pagename().unwrap_or(&default_pagename));
-        self.pagename = html_escape::encode_text(&pagename).to_string();
+        self.pagename = html_escape::encode_quoted_attribute(&pagename).to_string();
 
         let title = Self::sanitize_html(query.title().unwrap_or(&self.pagename.replace('_', " ")));
-        self.title = html_escape::encode_text(&title).to_string();
+        self.title = html_escape::encode_quoted_attribute(&title).to_string();
 
         // Initialize Map Sources
         // Some(params)
@@ -561,6 +563,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_quotes_escaped_in_user_input() {
+        // Double quotes must be escaped: params/pagename/title end up inside
+        // href="..." attributes, where a raw quote allows attribute injection
+        let mut geohack = GeoHack::new().unwrap();
+        let query = QueryParameters::new_for_test(
+            "40_N_74_W_region:XX\"",
+            Some(r#"x" onmouseover="alert(1)"#),
+        );
+        geohack.init_from_query(&query).unwrap();
+        assert!(!geohack.params.contains('"'));
+        assert!(geohack.params.contains("&quot;"));
+        assert!(!geohack.title.contains('"'));
+        assert!(geohack.title.contains("&quot;"));
+    }
+
     // The tests below (test_#) are all examples from the original testcases.html
     // The template HTML and the expected output are cached.
     // The expected output has been validated manually against the original geohack.php output.
@@ -575,6 +593,15 @@ mod tests {
         let template_content = templates.load(&language, &globe, &query, false).await?;
         geohack.set_page_content(&template_content);
         geohack.process()
+    }
+
+    #[tokio::test]
+    async fn test_multibyte_region_does_not_panic() {
+        // A multi-byte UTF-8 region code used to panic (byte slicing), which
+        // aborts the whole process in release builds (panic = 'abort')
+        let query = QueryParameters::new_for_test("40_N_74_W_region:x\u{e9}", None);
+        let html = run_geohack(query).await.unwrap();
+        assert!(!html.is_empty());
     }
 
     #[tokio::test]
