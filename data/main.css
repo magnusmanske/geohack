@@ -72,7 +72,6 @@ body {
 	display: block; float: left;
 	height: 1.5em;
 	margin: 0 0 0 0;
-	vertical-align: middle;
 
 	font-weight: bold;
 	text-transform: lowercase;
@@ -359,9 +358,6 @@ h1, h2 {
 #preferences fieldset {
 	margin-top: 0;
 	border: none;
-}
-
-#preferences h2 {
 }
 
 .mainLegend {
