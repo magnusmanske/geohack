@@ -17,6 +17,10 @@
   (`prefers-color-scheme`). Light mode is unchanged. (#3)
 
 ### Fixed
+- Static assets were served with a duplicated, malformed `Content-Type`
+  (`application/octet-stream,image/png`): `AppendHeaders` adds a second value
+  instead of replacing the one axum derives from the body. `main.css` now also
+  declares `charset=utf-8`.
 - The celestial-body logo in the sidebar is no longer a black rectangle:
   Wikimedia now rejects hotlinked thumbnails whose width is not a standard
   step (<https://w.wiki/GHai>), and every URL in `data/logos.json` used 150px.

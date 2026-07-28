@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
-    response::{AppendHeaders, Html, IntoResponse, Response},
+    response::{Html, IntoResponse},
     routing::get,
 };
 use std::net::SocketAddr;
@@ -15,47 +15,46 @@ struct AppState {
     templates: Templates,
 }
 
+// Note: the `[(CONTENT_TYPE, ...)]` form replaces the `Content-Type` that axum
+// derives from the body type. `AppendHeaders` would add a second value instead,
+// yielding a malformed header such as `application/octet-stream,image/png`.
+
 #[axum::debug_handler]
-async fn main_css() -> Response {
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, "text/css".parse().unwrap());
-    let css_content = include_str!("../data/main.css").to_string();
-    (StatusCode::OK, headers, css_content).into_response()
-    // TODO: check if the short form below works
-    // (
-    //     AppendHeaders([(CONTENT_TYPE, "text/css")]),
-    //     include_str!("../data/main.css").to_string(),
-    // )
+async fn main_css() -> impl IntoResponse {
+    (
+        [(CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("../data/main.css"),
+    )
 }
 
 #[axum::debug_handler]
 async fn favicon_ico() -> impl IntoResponse {
     const FAVICON: &[u8] = include_bytes!("../data/favicon.ico");
-    (AppendHeaders([(CONTENT_TYPE, "image/x-icon")]), FAVICON)
+    ([(CONTENT_TYPE, "image/x-icon")], FAVICON)
 }
 
 #[axum::debug_handler]
 async fn siteicon_png() -> impl IntoResponse {
-    const FAVICON: &[u8] = include_bytes!("../data/siteicon.png");
-    (AppendHeaders([(CONTENT_TYPE, "image/png")]), FAVICON)
+    const SITEICON: &[u8] = include_bytes!("../data/siteicon.png");
+    ([(CONTENT_TYPE, "image/png")], SITEICON)
 }
 
 #[axum::debug_handler]
 async fn external_png() -> impl IntoResponse {
-    const FAVICON: &[u8] = include_bytes!("../data/external.png");
-    (AppendHeaders([(CONTENT_TYPE, "image/png")]), FAVICON)
+    const EXTERNAL: &[u8] = include_bytes!("../data/external.png");
+    ([(CONTENT_TYPE, "image/png")], EXTERNAL)
 }
 
 #[axum::debug_handler]
 async fn bullet_gif() -> impl IntoResponse {
-    const FAVICON: &[u8] = include_bytes!("../data/bullet.gif");
-    (AppendHeaders([(CONTENT_TYPE, "image/gif")]), FAVICON)
+    const BULLET: &[u8] = include_bytes!("../data/bullet.gif");
+    ([(CONTENT_TYPE, "image/gif")], BULLET)
 }
 
 #[axum::debug_handler]
 async fn lock_icon_gif() -> impl IntoResponse {
-    const FAVICON: &[u8] = include_bytes!("../data/lock_icon.gif");
-    (AppendHeaders([(CONTENT_TYPE, "image/gif")]), FAVICON)
+    const LOCK_ICON: &[u8] = include_bytes!("../data/lock_icon.gif");
+    ([(CONTENT_TYPE, "image/gif")], LOCK_ICON)
 }
 
 #[axum::debug_handler]
@@ -157,4 +156,48 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn content_types(response: &axum::response::Response) -> Vec<String> {
+        response
+            .headers()
+            .get_all(CONTENT_TYPE)
+            .iter()
+            .map(|value| value.to_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    /// Each static asset must send exactly one `Content-Type`; appending to the
+    /// body-derived default used to produce `application/octet-stream,image/png`.
+    #[tokio::test]
+    async fn test_static_assets_have_a_single_content_type() {
+        let assets = [
+            (main_css().await.into_response(), "text/css; charset=utf-8"),
+            (favicon_ico().await.into_response(), "image/x-icon"),
+            (siteicon_png().await.into_response(), "image/png"),
+            (external_png().await.into_response(), "image/png"),
+            (bullet_gif().await.into_response(), "image/gif"),
+            (lock_icon_gif().await.into_response(), "image/gif"),
+        ];
+        for (response, expected) in assets {
+            assert_eq!(content_types(&response), vec![expected.to_string()]);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_html_pages_declare_utf8() {
+        for response in [
+            index().await.into_response(),
+            testcases_html().await.into_response(),
+        ] {
+            assert_eq!(
+                content_types(&response),
+                vec!["text/html; charset=utf-8".to_string()]
+            );
+        }
+    }
 }
