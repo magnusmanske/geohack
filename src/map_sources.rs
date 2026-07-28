@@ -128,11 +128,11 @@ impl MapSources {
         misc.add_rep_map(&mut rep_map);
         rep_map.insert(
             "params".to_string(),
-            html_escape::encode_text(self.params.as_deref().unwrap_or("")).to_string(),
+            html_escape::encode_quoted_attribute(self.params.as_deref().unwrap_or("")).to_string(),
         );
         rep_map.insert(
             "language".to_string(),
-            html_escape::encode_text(&self.language).to_string(),
+            html_escape::encode_quoted_attribute(&self.language).to_string(),
         );
         rep_map.insert("pagename_gmaps".to_string(), pagename_gmaps);
 
@@ -178,7 +178,10 @@ impl MapSources {
         } else if let Some(reg) = attr.get("region")
             && !reg.is_empty()
         {
-            region = format!("/{}", reg[..2.min(reg.len())].to_uppercase());
+            // Truncate by characters, not bytes: byte slicing panics on
+            // multi-byte UTF-8 in the user-supplied region code.
+            let prefix: String = reg.chars().take(2).collect();
+            region = format!("/{}", prefix.to_uppercase());
         }
         region
     }
@@ -271,6 +274,15 @@ mod tests {
         assert_eq!(ms.language, "en");
         assert!(ms.params.is_some());
         assert_eq!(ms.mapsources, "Map sources");
+    }
+
+    #[test]
+    fn test_get_region_multibyte_does_not_panic() {
+        let mut ms = MapSources::new("40_N_74_W", "en").unwrap();
+        let mut attr = HashMap::new();
+        // Byte 2 is in the middle of the multi-byte 'é'; byte slicing would panic
+        attr.insert("region".to_string(), "xé".to_string());
+        assert_eq!(ms.get_region(&attr), "/XÉ");
     }
 
     #[test]

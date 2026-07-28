@@ -146,15 +146,11 @@ impl MiscMapSourceValues {
     }
 
     pub fn region_string(&self) -> String {
+        // Take characters 4..12, by character rather than byte: byte slicing
+        // panics on multi-byte UTF-8 in the user-supplied region code.
         self.attr
             .get("region")
-            .map(|r| {
-                if r.len() >= 4 {
-                    r[4..r.len().min(12)].to_uppercase()
-                } else {
-                    String::new()
-                }
-            })
+            .map(|r| r.chars().skip(4).take(8).collect::<String>().to_uppercase())
             .unwrap_or_default()
     }
 
@@ -206,6 +202,18 @@ mod tests {
 
         // Region too short (< 4 chars), should return empty
         assert_eq!(msv.region_string(), "");
+    }
+
+    #[test]
+    fn test_region_string_multibyte_does_not_panic() {
+        let mut attr = HashMap::new();
+        // Byte 4 is in the middle of the second 'é'; byte slicing would panic
+        attr.insert("region".to_string(), "aéé-xy".to_string());
+
+        let msv = MiscMapSourceValues::new("", "", "", attr);
+
+        // Characters 4.. of "aéé-xy" are "xy", uppercased
+        assert_eq!(msv.region_string(), "XY");
     }
 
     #[test]
