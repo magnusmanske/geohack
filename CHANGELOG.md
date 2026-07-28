@@ -1,0 +1,38 @@
+# Changelog
+
+## 0.1.1 - 2026-07-28
+
+### Security
+- Fixed a remote-triggerable panic (whole-process abort in release builds) on
+  multi-byte UTF-8 in `region:` values.
+- User-supplied `params`, `pagename`, and `title` now have quotes escaped,
+  closing an attribute-injection XSS in `href="..."` contexts.
+- The `project` parameter is URL-encoded before being placed in template
+  fetch URLs, preventing query injection.
+- Template cache is now bounded (100 entries), preventing memory exhaustion
+  via arbitrary cache keys.
+
+### Fixed
+- OSGB36 output now applies the official OSTN15 datum transformation
+  (WGS84 → OSGB36) via the `lonlat_bng` crate. Previous values, inherited
+  from the PHP original, skipped the datum shift and were ~100 m off across
+  the UK. Coordinates outside Great Britain now yield `0`/empty instead of
+  meaningless values.
+- `{geoa1}` returns the actual subdivision code (`NY` for `region:US-NY`);
+  it was off by one (a faithfully ported PHP bug).
+- The default title (when `&title=` is absent) and `{params}` are no longer
+  double-escaped.
+- Invalid user input returns HTTP 400 with a brief message instead of a
+  blank 500.
+
+### Changed
+- UTM projections delegated to the `utm` crate (output identical to sub-mm);
+  hand-rolled projection code retained only for CH1903.
+- Template cache replaced with `moka`: 1 h TTL, bounded, coalesces concurrent
+  fetches, and shares cached templates without per-request copies.
+- Templates are fetched over HTTPS.
+- Server errors are logged via `tracing`.
+
+## 0.1.0
+
+- Initial Rust port of the PHP GeoHack tool.
