@@ -75,7 +75,7 @@ async fn geohack(
     State(state): State<AppState>,
     headers: HeaderMap,
     params: Query<QueryParameters>,
-) -> Result<Html<String>, StatusCode> {
+) -> Result<Html<String>, (StatusCode, String)> {
     let mut query = params.0;
     query.set_http_referrer(
         headers
@@ -83,10 +83,15 @@ async fn geohack(
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string()),
     );
-    let mut geohack = GeoHack::new().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    geohack
-        .init_from_query(&query)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut geohack = GeoHack::new().map_err(|error| {
+        tracing::error!(%error, "GeoHack::new failed");
+        internal_server_error()
+    })?;
+    // Failures here are caused by invalid user input (bad params etc.)
+    geohack.init_from_query(&query).map_err(|error| {
+        tracing::info!(%error, params = query.params(), "Rejected query parameters");
+        (StatusCode::BAD_REQUEST, format!("Bad request: {error}"))
+    })?;
 
     let language = geohack.lang().trim().to_ascii_lowercase();
     let globe = geohack.globe().trim().to_ascii_lowercase();
@@ -95,15 +100,28 @@ async fn geohack(
         .templates
         .load(&language, &globe, &query, purge)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|error| {
+            tracing::error!(%error, language, globe, "Failed to load GeoTemplate");
+            internal_server_error()
+        })?;
 
     geohack.set_page_content(&template_content);
     let html = geohack
         .process()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to process template");
+            internal_server_error()
+        })?
         .replace("</html>", "<!-- Rust code --></html>");
 
     Ok(Html(html))
+}
+
+fn internal_server_error() -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal server error".to_string(),
+    )
 }
 
 pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {

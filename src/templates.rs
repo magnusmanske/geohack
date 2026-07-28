@@ -61,11 +61,14 @@ impl Templates {
             pagename += "/sandbox";
         }
         let request_url = if let Some(project) = use_project {
+            let project = urlencoding::encode(&project);
             format!(
-                "http://meta.wikimedia.org/w/index.php?title={pagename}/{project}&useskin=monobook"
+                "https://meta.wikimedia.org/w/index.php?title={pagename}/{project}&useskin=monobook"
             )
         } else {
-            format!("http://{language}.wikipedia.org/w/index.php?title={pagename}&useskin=monobook")
+            format!(
+                "https://{language}.wikipedia.org/w/index.php?title={pagename}&useskin=monobook"
+            )
         };
 
         if let Ok(response) = self.client.get(&request_url).send().await
@@ -77,7 +80,7 @@ impl Templates {
 
         // Fallback
         let request_url_fallback = format!(
-            "http://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
+            "https://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
         let response = self.client.get(&request_url_fallback).send().await?;
         let html = response.text().await?;
