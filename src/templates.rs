@@ -1,31 +1,27 @@
 use crate::query_parameters::QueryParameters;
-use anyhow::Result;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::sync::RwLock;
+use anyhow::{Result, anyhow};
+use moka::future::Cache;
+use std::{sync::Arc, time::Duration};
 
 const HTTP_USER_AGENT: &str = "GeoHack/2.0";
 const CACHE_DURATION_SEC: u64 = 60 * 60; // 1h
-
-#[derive(Debug, Clone, Default)]
-pub struct Template {
-    html: String,
-    expires: Option<Instant>,
-}
+const CACHE_MAX_ENTRIES: u64 = 100;
 
 #[derive(Debug, Clone)]
 pub struct Templates {
-    templates: Arc<RwLock<HashMap<String, Template>>>,
+    // Bounded + TTL'd cache. The key contains user-supplied input (project),
+    // so it must not be allowed to grow without limit.
+    cache: Cache<String, Arc<str>>,
     client: reqwest::Client,
 }
 
 impl Default for Templates {
     fn default() -> Self {
         Self {
-            templates: Arc::new(RwLock::new(HashMap::new())),
+            cache: Cache::builder()
+                .max_capacity(CACHE_MAX_ENTRIES)
+                .time_to_live(Duration::from_secs(CACHE_DURATION_SEC))
+                .build(),
             client: Self::build_reqwest_client().expect("Failed to build reqwest client"),
         }
     }
@@ -38,20 +34,33 @@ impl Templates {
         globe: &str,
         query: &QueryParameters,
         purge_cache: bool,
-    ) -> Result<String> {
+    ) -> Result<Arc<str>> {
         let use_sandbox = query.sandbox();
         let use_project = query.project();
-
-        // Try cache
         let caching_key = format!("{language}-{globe}-{use_sandbox}-{use_project:?}");
-        if !purge_cache
-            && let Some(template) = self.templates.read().await.get(&caching_key)
-            && let Some(expires) = &template.expires
-            && expires > &Instant::now()
-        {
-            return Ok(template.html.clone());
+
+        if purge_cache {
+            self.cache.invalidate(&caching_key).await;
         }
 
+        // try_get_with coalesces concurrent fetches for the same key and does
+        // not cache errors
+        self.cache
+            .try_get_with(
+                caching_key,
+                self.fetch_template(language, globe, use_sandbox, use_project.as_deref()),
+            )
+            .await
+            .map_err(|error| anyhow!("Failed to load GeoTemplate: {error}"))
+    }
+
+    async fn fetch_template(
+        &self,
+        language: &str,
+        globe: &str,
+        use_sandbox: bool,
+        project: Option<&str>,
+    ) -> Result<Arc<str>> {
         let mut pagename = "Template:GeoTemplate".to_string();
         if !globe.is_empty() && globe != "earth" {
             pagename.push('/');
@@ -60,8 +69,8 @@ impl Templates {
         if use_sandbox {
             pagename += "/sandbox";
         }
-        let request_url = if let Some(project) = use_project {
-            let project = urlencoding::encode(&project);
+        let request_url = if let Some(project) = project {
+            let project = urlencoding::encode(project);
             format!(
                 "https://meta.wikimedia.org/w/index.php?title={pagename}/{project}&useskin=monobook"
             )
@@ -74,8 +83,7 @@ impl Templates {
         if let Ok(response) = self.client.get(&request_url).send().await
             && let Ok(html) = response.text().await
         {
-            self.set_template(&caching_key, &html).await?;
-            return Ok(html);
+            return Ok(html.into());
         }
 
         // Fallback
@@ -84,19 +92,7 @@ impl Templates {
         );
         let response = self.client.get(&request_url_fallback).send().await?;
         let html = response.text().await?;
-        self.set_template(&caching_key, &html).await?;
-        Ok(html)
-    }
-
-    async fn set_template(&self, caching_key: &str, html: &str) -> Result<()> {
-        self.templates.write().await.insert(
-            caching_key.to_string(),
-            Template {
-                html: html.to_string(),
-                expires: Some(Instant::now() + Duration::from_secs(CACHE_DURATION_SEC)),
-            },
-        );
-        Ok(())
+        Ok(html.into())
     }
 
     fn build_reqwest_client() -> Result<reqwest::Client> {
@@ -110,31 +106,31 @@ impl Templates {
 
     /// ONLY TO BE USED FOR INTERNAL TESTING PURPOSES
     pub async fn seed_test_cases(&self) -> Result<()> {
-        self.set_template(
-            "en--false-None",
-            include_str!("../test_data/en--false-None.html"),
-        )
-        .await?;
-        self.set_template(
-            "en-ganymede-false-None",
-            include_str!("../test_data/en-ganymede-false-None.html"),
-        )
-        .await?;
-        self.set_template(
-            "en-mars-false-None",
-            include_str!("../test_data/en-mars-false-None.html"),
-        )
-        .await?;
-        self.set_template(
-            "en-moon-false-None",
-            include_str!("../test_data/en-moon-false-None.html"),
-        )
-        .await?;
-        self.set_template(
-            "en-venus-false-None",
-            include_str!("../test_data/en-venus-false-None.html"),
-        )
-        .await?;
+        let test_cases = [
+            (
+                "en--false-None",
+                include_str!("../test_data/en--false-None.html"),
+            ),
+            (
+                "en-ganymede-false-None",
+                include_str!("../test_data/en-ganymede-false-None.html"),
+            ),
+            (
+                "en-mars-false-None",
+                include_str!("../test_data/en-mars-false-None.html"),
+            ),
+            (
+                "en-moon-false-None",
+                include_str!("../test_data/en-moon-false-None.html"),
+            ),
+            (
+                "en-venus-false-None",
+                include_str!("../test_data/en-venus-false-None.html"),
+            ),
+        ];
+        for (key, html) in test_cases {
+            self.cache.insert(key.to_string(), html.into()).await;
+        }
         Ok(())
     }
 }
