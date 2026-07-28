@@ -1,45 +1,27 @@
 use crate::geo_param::GeoParam;
-use crate::traverse_mercator::{CH1903, OSGB36, TransverseMercator};
+use crate::traverse_mercator::{CH1903, OSGB36, Utm};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransverseMercatorForms {
-    utm: TransverseMercator,
-    utm33: TransverseMercator,
+    utm: Utm,
+    utm33: Utm,
     osgb36: OSGB36,
-    osgb36ref: String,
     ch1903: CH1903,
 }
 
 impl TransverseMercatorForms {
+    /// Convert coordinates to various Transverse Mercator forms
     pub fn new(p: &GeoParam) -> Self {
-        /*
-         *  Convert coordinates to various Transverse Mercator forms
-         */
-
-        /* standard UTM */
-        let mut utm = TransverseMercator::default();
-        utm.lat_lon_to_utm(p.latdeg(), p.londeg());
-        utm.set_zone(utm.lat_lon_to_utm_zone(p.latdeg(), p.londeg()));
-
-        /* fixed UTM as used by iNatur */
-        let mut utm33 = TransverseMercator::default();
-        utm33.lat_lon_zone_to_utm(p.latdeg(), p.londeg(), "33V");
-
-        /*  UK National Grid, see http://www.gps.gov.uk/guide7.asp
-         *  central meridian 47N 2W, offset 100km N 400km W */
-        let mut osgb36 = OSGB36::default();
-        let osgb36ref = osgb36.lat_lon_to_osgb36(p.latdeg(), p.londeg());
-
-        /* Swiss traditional national grid */
-        let mut ch1903 = CH1903::default();
-        ch1903.lat_lon_to_ch1903(p.latdeg(), p.londeg());
         Self {
-            utm,
-            utm33,
-            osgb36,
-            osgb36ref,
-            ch1903,
+            /* standard UTM */
+            utm: Utm::from_lat_lon(p.latdeg(), p.londeg()),
+            /* fixed UTM zone as used by iNatur */
+            utm33: Utm::from_lat_lon_forced_zone(p.latdeg(), p.londeg(), 33),
+            /* UK National Grid */
+            osgb36: OSGB36::from_lat_lon(p.latdeg(), p.londeg()),
+            /* Swiss traditional national grid */
+            ch1903: CH1903::from_lat_lon(p.latdeg(), p.londeg()),
         }
     }
 
@@ -50,7 +32,7 @@ impl TransverseMercatorForms {
             "utmeasting" => self.utm.easting().round(),
             "utm33northing" => self.utm33.northing().round(),
             "utm33easting" => self.utm33.easting().round(),
-            "osgb36ref" => &self.osgb36ref,
+            "osgb36ref" => self.osgb36.grid_reference(),
             "osgb36northing" => self.osgb36.northing().round(),
             "osgb36easting" => self.osgb36.easting().round(),
             "ch1903northing" => self.ch1903.northing().round(),
@@ -73,8 +55,8 @@ mod tests {
         assert!(tmf.utm.zone().starts_with("30") || tmf.utm.zone().starts_with("31"));
 
         // OSGB36 should produce valid reference for London
-        assert!(!tmf.osgb36ref.is_empty());
-        assert!(tmf.osgb36ref.starts_with('T')); // London is in TQ grid square
+        assert!(!tmf.osgb36.grid_reference().is_empty());
+        assert!(tmf.osgb36.grid_reference().starts_with('T')); // London is in TQ grid square
     }
 
     #[test]
@@ -114,6 +96,6 @@ mod tests {
         let tmf = TransverseMercatorForms::new(&geo);
 
         // OSGB36 is only valid for UK
-        assert!(tmf.osgb36ref.is_empty());
+        assert!(tmf.osgb36.grid_reference().is_empty());
     }
 }

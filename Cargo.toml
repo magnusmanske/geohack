@@ -1,6 +1,6 @@
 [package]
 name = "geohack"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -21,6 +21,8 @@ tracing-subscriber = "*"
 tower-http = { version = "*", features = ["full"] }
 anyhow = "*"
 moka = { version = "0.12", features = ["future"] }
+utm = "0.1.6"
+lonlat_bng = "0.9.0"
 urlencoding = "*"
 html-escape = "*"
 regex = "*"

@@ -626,9 +626,9 @@ mod tests {
         let query =
             QueryParameters::new_for_test("40.71_N_-74.00_E_type:city", Some("New York City"));
         let html = run_geohack(query).await.unwrap();
+        // std::fs::write("test_data/test_1.html", html).unwrap();
         let expected = include_str!("../test_data/test_1.html");
         assert_eq!(html.trim(), expected.trim());
-        // std::fs::write("test_data/test_1b.html", html).unwrap();
     }
 
     #[tokio::test]
