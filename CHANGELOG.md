@@ -17,6 +17,16 @@
   (`prefers-color-scheme`). Light mode is unchanged. (#3)
 
 ### Fixed
+- The celestial-body logo in the sidebar is no longer a black rectangle:
+  Wikimedia now rejects hotlinked thumbnails whose width is not a standard
+  step (<https://w.wiki/GHai>), and every URL in `data/logos.json` used 150px.
+  All are now 250px, scaled down via `background-size:contain` to keep the
+  previous 150px display size. Three stale Commons paths (`sun`, `titania`,
+  `puck`) and the OpenStreetMap wiki logo URL were dead as well and have been
+  updated; all 44 URLs verified to return 200.
+- The Wikimedia Cloud Services logo has a black wordmark, which was
+  illegible on the dark background introduced in this release. It now gets a
+  light backing in dark mode.
 - Wikis without their own `Template:GeoTemplate` now fall back to the English
   template instead of rendering MediaWiki's "page does not exist" body: a 404
   response was being used as the template. (#4)

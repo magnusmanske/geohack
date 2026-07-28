@@ -300,7 +300,7 @@ Waarschuwing:
             html,
             r#"
 <div class="portlet">
-<div style="background:#000 url({}) center no-repeat; height:150px;"></div>
+<div style="background:#000 url({}) center/contain no-repeat; height:150px;"></div>
 </div>"#,
             logo_url
         );
@@ -326,7 +326,7 @@ Waarschuwing:
 <!--            <li><a href="https://bitbucket.org/abbe98/geohack/issues">Bug tracker</a></li>
             <li><a href="https://bitbucket.org/magnusmanske/geohack">Source Code</a>)</li>-->
         </ul>
-        <p style="text-align:center;"><a href="https://tools.wmflabs.org/"><img border="0" alt="Powered by Wikimedia Cloud Services" src="https://upload.wikimedia.org/wikipedia/commons/5/5a/Wikimedia_Cloud_Services_logo_with_text.svg" width="110" /></a></p>
+        <p style="text-align:center;"><a href="https://tools.wmflabs.org/"><img class="wmcs-logo" border="0" alt="Powered by Wikimedia Cloud Services" src="https://upload.wikimedia.org/wikipedia/commons/5/5a/Wikimedia_Cloud_Services_logo_with_text.svg" width="110" /></a></p>
     </div>
 </div>
     <!-- actions -->
@@ -562,8 +562,32 @@ mod tests {
         assert!(logo_urls.contains_key("moon"));
         assert_eq!(
             logo_urls.get("neptune").unwrap(),
-            "//upload.wikimedia.org/wikipedia/commons/thumb/0/06/Neptune.jpg/150px-Neptune.jpg"
+            "//upload.wikimedia.org/wikipedia/commons/thumb/0/06/Neptune.jpg/250px-Neptune.jpg"
         );
+    }
+
+    /// Wikimedia rejects hotlinked thumbnails whose width is not one of the
+    /// standard steps (<https://w.wiki/GHai>), so any other width silently
+    /// renders as an empty black box in the sidebar.
+    #[test]
+    fn test_logo_urls_use_standard_thumbnail_widths() {
+        const STANDARD_WIDTHS: [&str; 11] = [
+            "20", "40", "60", "120", "250", "330", "500", "960", "1280", "1920", "3840",
+        ];
+        for (globe, url) in GeoHack::init_logo_urls() {
+            if !url.contains("upload.wikimedia.org/wikipedia/commons/thumb/") {
+                continue;
+            }
+            let width = url
+                .rsplit_once('/')
+                .and_then(|(_, file)| file.split_once("px-"))
+                .map(|(width, _)| width.to_string())
+                .unwrap_or_default();
+            assert!(
+                STANDARD_WIDTHS.contains(&width.as_str()),
+                "non-standard thumbnail width {width:?} for globe {globe:?}"
+            );
+        }
     }
 
     #[test]
