@@ -145,12 +145,23 @@ impl MiscMapSourceValues {
         &self.region
     }
 
+    /// The `{geoa1}` value: the first-level administrative subdivision of an
+    /// ISO 3166-2 style region code, e.g. "NY" from "US-NY" (up to 8 chars).
+    ///
+    /// Note: the original PHP used `substr($attr['region'], 4, 8)`, an
+    /// off-by-one that turned "US-NY" into "Y". This is a deliberate fix of
+    /// that bug, diverging from the PHP output.
     pub fn region_string(&self) -> String {
-        // Take characters 4..12, by character rather than byte: byte slicing
-        // panics on multi-byte UTF-8 in the user-supplied region code.
         self.attr
             .get("region")
-            .map(|r| r.chars().skip(4).take(8).collect::<String>().to_uppercase())
+            .and_then(|r| r.split_once('-'))
+            .map(|(_, subdivision)| {
+                subdivision
+                    .chars()
+                    .take(8)
+                    .collect::<String>()
+                    .to_uppercase()
+            })
             .unwrap_or_default()
     }
 
@@ -184,13 +195,22 @@ mod tests {
     #[test]
     fn test_region_string_with_long_region() {
         let mut attr = HashMap::new();
-        // "US-NY-NYC" has length 9, so characters 4..9 = "Y-NYC"
         attr.insert("region".to_string(), "US-NY-NYC".to_string());
 
         let msv = MiscMapSourceValues::new("", "", "", attr);
 
-        // Should extract characters from index 4 onwards (Y-NYC) and uppercase
-        assert_eq!(msv.region_string(), "Y-NYC");
+        // Everything after the country code, uppercased
+        assert_eq!(msv.region_string(), "NY-NYC");
+    }
+
+    #[test]
+    fn test_region_string_simple_subdivision() {
+        let mut attr = HashMap::new();
+        attr.insert("region".to_string(), "US-NY".to_string());
+
+        let msv = MiscMapSourceValues::new("", "", "", attr);
+
+        assert_eq!(msv.region_string(), "NY");
     }
 
     #[test]
@@ -200,19 +220,18 @@ mod tests {
 
         let msv = MiscMapSourceValues::new("", "", "", attr);
 
-        // Region too short (< 4 chars), should return empty
+        // No subdivision part, should return empty
         assert_eq!(msv.region_string(), "");
     }
 
     #[test]
     fn test_region_string_multibyte_does_not_panic() {
         let mut attr = HashMap::new();
-        // Byte 4 is in the middle of the second 'é'; byte slicing would panic
+        // Multi-byte UTF-8 must not panic (the old byte slicing did)
         attr.insert("region".to_string(), "aéé-xy".to_string());
 
         let msv = MiscMapSourceValues::new("", "", "", attr);
 
-        // Characters 4.. of "aéé-xy" are "xy", uppercased
         assert_eq!(msv.region_string(), "XY");
     }
 
