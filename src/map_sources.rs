@@ -128,7 +128,9 @@ impl MapSources {
         misc.add_rep_map(&mut rep_map);
         rep_map.insert(
             "params".to_string(),
-            html_escape::encode_quoted_attribute(self.params.as_deref().unwrap_or("")).to_string(),
+            // Already HTML-escaped by GeoHack::init_from_query; escaping again
+            // here would double-escape (the PHP escapes exactly once)
+            self.params.clone().unwrap_or_default(),
         );
         rep_map.insert(
             "language".to_string(),

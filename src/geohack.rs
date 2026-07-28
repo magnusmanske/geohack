@@ -179,9 +179,12 @@ impl GeoHack {
             .unwrap_or_default();
 
         let pagename = Self::sanitize_html(query.pagename().unwrap_or(&default_pagename));
-        self.pagename = html_escape::encode_quoted_attribute(&pagename).to_string();
 
-        let title = Self::sanitize_html(query.title().unwrap_or(&self.pagename.replace('_', " ")));
+        // The default title is derived from the *unescaped* pagename, like the
+        // original PHP; deriving it from self.pagename would double-escape
+        let title = Self::sanitize_html(query.title().unwrap_or(&pagename.replace('_', " ")));
+
+        self.pagename = html_escape::encode_quoted_attribute(&pagename).to_string();
         self.title = html_escape::encode_quoted_attribute(&title).to_string();
 
         // Initialize Map Sources
@@ -577,6 +580,19 @@ mod tests {
         assert!(geohack.params.contains("&quot;"));
         assert!(!geohack.title.contains('"'));
         assert!(geohack.title.contains("&quot;"));
+    }
+
+    #[test]
+    fn test_default_title_not_double_escaped() {
+        let mut geohack = GeoHack::new().unwrap();
+        let mut query = QueryParameters::new_for_test("40_N_74_W", None);
+        query.set_http_referrer(Some(
+            "https://en.wikipedia.org/wiki/Tom_%26_Jerry".to_string(),
+        ));
+        geohack.init_from_query(&query).unwrap();
+        assert_eq!(geohack.pagename, "Tom_&amp;_Jerry");
+        // The default title derives from the raw pagename, escaped exactly once
+        assert_eq!(geohack.title, "Tom &amp; Jerry");
     }
 
     // The tests below (test_#) are all examples from the original testcases.html
