@@ -53,6 +53,9 @@ pub mod templates;
 pub mod transverse_mercator_forms;
 pub mod traverse_mercator;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::Result;
 use std::env;
 use std::net::Ipv4Addr;
