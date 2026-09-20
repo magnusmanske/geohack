@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Performance
+- Templates are now served stale-while-revalidate. Previously the first request
+  after the 1-hour TTL expired had to wait for the upstream wiki, measured at
+  1.4-3.1 s; that request is now answered from cache in ~2 ms while a background
+  task fetches the new copy. A stale copy is served for up to 24 hours if the
+  wiki is unreachable, instead of returning HTTP 500.
+- Background refreshes are capped at 4 concurrently, so the whole cache going
+  stale at once (entries populated by one traffic burst also expire together)
+  cannot stampede the wikis.
+- Per-request CPU for the warm path dropped ~18% (736 us -> 605 us for the
+  English template) by removing redundant copies of the ~200 kB page: the
+  intermediate page is no longer stored on `GeoHack`, the three MediaWiki
+  fixups run as one pass instead of three, the `{nztm*}` substitutions moved
+  into the existing replacement map, body extraction trims in place, and
+  `process` no longer clones the output when no `region:` is given.
+
 ## 0.1.1 - 2026-07-28
 
 ### Security
