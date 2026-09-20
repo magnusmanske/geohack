@@ -58,15 +58,13 @@ async fn lock_icon_gif() -> impl IntoResponse {
 }
 
 #[axum::debug_handler]
-async fn index() -> Html<String> {
-    let html = include_str!("../data/index.html").to_string();
-    Html(html)
+async fn index() -> Html<&'static str> {
+    Html(include_str!("../data/index.html"))
 }
 
 #[axum::debug_handler]
-async fn testcases_html() -> Html<String> {
-    let html = include_str!("../data/testcases.html").to_string();
-    Html(html)
+async fn testcases_html() -> Html<&'static str> {
+    Html(include_str!("../data/testcases.html"))
 }
 
 #[axum::debug_handler]

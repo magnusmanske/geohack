@@ -137,6 +137,9 @@ impl MapSources {
             html_escape::encode_quoted_attribute(&self.language).to_string(),
         );
         rep_map.insert("pagename_gmaps".to_string(), pagename_gmaps);
+        // Ugly hack carried over from the PHP: NZTM is not implemented
+        rep_map.insert("nztmeasting".to_string(), "0".to_string());
+        rep_map.insert("nztmnorthing".to_string(), "0".to_string());
 
         // Build patterns and replacements for efficient multi-pattern replacement
         // We need to handle both {key} and &#123;key&#125; (HTML-escaped) formats

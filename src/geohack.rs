@@ -10,9 +10,23 @@ use crate::regex_patterns::{
     RE_FIX_LANGUAGE_CODE, RE_INIT_FROM_QUERY, RE_MAKE_LINK, RE_SANITIZE_HTML,
     RE_WIKIPEDIA_LANG_LINK,
 };
+use aho_corasick::AhoCorasick;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::ops::Range;
+use std::sync::LazyLock;
+
+/// Fixups applied to every fetched MediaWiki page. Only the patterns are
+/// static; the `href` replacement depends on the request language.
+static PAGE_FIXUPS: LazyLock<AhoCorasick> = LazyLock::new(|| {
+    AhoCorasick::new([
+        r#" href="/w"#,
+        r#" role="navigation""#,
+        r#" class="portlet""#,
+    ])
+    .expect("PAGE_FIXUPS patterns are valid")
+});
 
 /// Main GeoHack application struct
 #[derive(Debug, Clone)]
@@ -347,134 +361,139 @@ Waarschuwing:
 
     /// Set page content from template
     pub fn set_page_content(&mut self, content: &str) {
-        self.page_content = content.to_string();
-        self.fix_wikipedia_html();
-        self.map_sources.set_thetext(self.page_content.clone());
+        // `page_content` is deliberately not set here: `process` overwrites it
+        // before `build_output` reads it, so storing the (large) intermediate
+        // page would only buy an extra copy.
+        let (page, actions, languages) = self.process_wikipedia_page(content);
+        self.actions = actions;
+        self.languages = languages;
+        self.map_sources.set_thetext(page);
     }
 
     /// Process the template and build final output
     pub fn process(&mut self) -> Result<String> {
-        // Build the map sources output
-        let processed_content = self.map_sources.build_output(&self.pagename, &self.title)?;
-
-        // Apply ugly hacks
-        let processed_content = processed_content
-            .replace("{nztmeasting}", "0")
-            .replace("{nztmnorthing}", "0");
+        // Build the map sources output. The `{nztm*}` placeholders are part of
+        // the replacement map, so no extra pass over the page is needed here.
+        let mut content = self.map_sources.build_output(&self.pagename, &self.title)?;
 
         // Handle localized services
-        let mut final_content = processed_content.clone();
         if let Some(region) = &self.region_name {
-            let locmaps =
-                Self::get_div_section(&processed_content, &format!("GEOTEMPLATE-{}", region), 0);
-            let locinsert = Self::get_div_section(&processed_content, "GEOTEMPLATE-LOCAL", 0);
+            let locmaps = Self::get_div_section(&content, &format!("GEOTEMPLATE-{region}"), 0);
+            let locinsert = Self::get_div_section(&content, "GEOTEMPLATE-LOCAL", 0);
 
             if !locmaps.is_empty() && !locinsert.is_empty() {
-                final_content = final_content.replace(&locmaps, "");
-                final_content = final_content.replace(&locinsert, &locmaps);
-                let regions_div = Self::get_div_section(&final_content, "GEOTEMPLATE-REGIONS", 0);
-                final_content = final_content.replace(&regions_div, "");
+                content = content.replace(&locmaps, "");
+                content = content.replace(&locinsert, &locmaps);
+                let regions_div = Self::get_div_section(&content, "GEOTEMPLATE-REGIONS", 0);
+                content = content.replace(&regions_div, "");
             }
         }
 
-        self.page_content = final_content;
+        self.page_content = content;
         Ok(self.build_output())
     }
 
-    fn fix_wikipedia_html(&mut self) {
-        (self.page_content, self.actions, self.languages) = self.process_wikipedia_page();
-    }
-
-    // Main processing function
-    fn process_wikipedia_page(&self) -> (String, String, String) {
-        let mut page = self.page_content.clone();
-        page = page
-            .replace(
-                r#" href="/w"#,
-                &format!(r#" href="//{}.wikipedia.org/w"#, self.lang),
-            )
-            .replace(r#" role="navigation""#, "")
-            .replace(r#" class="portlet""#, "");
+    /// Turn the fetched MediaWiki page into (body content, actions, languages).
+    fn process_wikipedia_page(&self, content: &str) -> (String, String, String) {
+        // One pass instead of three chained `String::replace` calls over the
+        // whole (~200 kB) page.
+        let mut page = PAGE_FIXUPS.replace_all(
+            content,
+            &[
+                format!(r#" href="//{}.wikipedia.org/w"#, self.lang),
+                String::new(),
+                String::new(),
+            ],
+        );
 
         let actions_section = Self::get_div_section(&page, "p-cactions", 0);
         let actions = actions_section.replace(r#"id="p-cactions""#, "");
 
         let lang_section = Self::get_div_section(&page, "p-lang", 0);
-        let theparams_clone = self.params.to_string();
-        let r_pagename_clone = self.pagename.to_string();
-
         let languages = RE_WIKIPEDIA_LANG_LINK
             .replace_all(&lang_section, |caps: &regex::Captures| {
                 let lang_match = caps.get(2).map_or("", |m| m.as_str());
                 format!(
                     r#" href="{}""#,
-                    Self::make_link(lang_match, &theparams_clone, &r_pagename_clone)
+                    Self::make_link(lang_match, &self.params, &self.pagename)
                 )
             })
             .to_string();
 
-        // Remove edit links — single pass, no cloning
-        {
-            const EDIT_OPEN: &str = r#"<span class="editsection""#;
-            const EDIT_CLOSE: &str = "</span>";
+        page = Self::remove_edit_links(&page);
 
-            let mut result = String::with_capacity(page.len());
-            let mut search_from = 0;
-
-            while let Some(start) = page[search_from..].find(EDIT_OPEN) {
-                let abs_start = search_from + start;
-                result.push_str(&page[search_from..abs_start]);
-
-                if let Some(end) = page[abs_start..].find(EDIT_CLOSE) {
-                    search_from = abs_start + end + EDIT_CLOSE.len();
-                } else {
-                    // No closing tag — keep rest as-is
-                    search_from = abs_start;
-                    break;
-                }
-            }
-
-            result.push_str(&page[search_from..]);
-            page = result;
-        }
-
-        // Build the page - extract content between markers
-        if page.contains("<!-- start content -->") {
-            // Split by start content marker and take the second part
-            if let Some(pos) = page.find("<!-- start content -->") {
-                page = page[pos + 22..].to_string(); // 22 is the length of "<!-- start content -->"
-
-                // Split by end content marker and take the first part
-                if let Some(end_pos) = page.find("<!-- end content -->") {
-                    page = page[..end_pos].to_string();
-                }
-            }
-        } else if page.contains("<!-- bodytext -->") {
-            // Alternative: use bodytext markers
-            if let Some(pos) = page.find("<!-- bodytext -->") {
-                page = page[pos + 17..].to_string(); // 17 is the length of "<!-- bodytext -->"
-
-                if let Some(end_pos) = page.find("<!-- /bodytext -->") {
-                    page = page[..end_pos].to_string();
-                }
-            }
-        } else if let Some(pos) = page.find(r#"<div id="mw-content-text"#) {
-            // Modern MediaWiki (no comment markers): extract from the
-            // mw-content-text div and stop before the printfooter /
-            // catlinks / column-one sidebar that follow it.
-            if let Some(tag_end) = page[pos..].find('>') {
-                page = page[pos + tag_end + 1..].to_string();
-            }
-            if let Some(end_pos) = page.find(r#"<div class="printfooter"#) {
-                page = page[..end_pos].to_string();
-            } else if let Some(end_pos) = page.find(r#"<div id="catlinks"#) {
-                page = page[..end_pos].to_string();
-            } else if let Some(end_pos) = page.find(r#"<div id="column-one"#) {
-                page = page[..end_pos].to_string();
-            }
-        }
+        // Keep only the body content, in place: no further copy of the page.
+        let content_range = Self::content_range(&page);
+        page.truncate(content_range.end);
+        page.drain(..content_range.start);
 
         (page, actions, languages)
+    }
+
+    /// Strip `<span class="editsection">…</span>` blocks.
+    fn remove_edit_links(page: &str) -> String {
+        const EDIT_OPEN: &str = r#"<span class="editsection""#;
+        const EDIT_CLOSE: &str = "</span>";
+
+        let mut result = String::with_capacity(page.len());
+        let mut search_from = 0;
+
+        while let Some(start) = page[search_from..].find(EDIT_OPEN) {
+            let abs_start = search_from + start;
+            result.push_str(&page[search_from..abs_start]);
+
+            if let Some(end) = page[abs_start..].find(EDIT_CLOSE) {
+                search_from = abs_start + end + EDIT_CLOSE.len();
+            } else {
+                // No closing tag — keep rest as-is
+                search_from = abs_start;
+                break;
+            }
+        }
+
+        result.push_str(&page[search_from..]);
+        result
+    }
+
+    /// Byte range of the article body within a rendered MediaWiki page.
+    fn content_range(page: &str) -> Range<usize> {
+        const COMMENT_MARKERS: [(&str, &str); 2] = [
+            ("<!-- start content -->", "<!-- end content -->"),
+            ("<!-- bodytext -->", "<!-- /bodytext -->"),
+        ];
+        const CONTENT_DIV: &str = r#"<div id="mw-content-text"#;
+        const TAIL_MARKERS: [&str; 3] = [
+            r#"<div class="printfooter"#,
+            r#"<div id="catlinks"#,
+            r#"<div id="column-one"#,
+        ];
+
+        // Older skins delimit the body with HTML comments.
+        for (open, close) in COMMENT_MARKERS {
+            if let Some(pos) = page.find(open) {
+                let start = pos + open.len();
+                return start..Self::find_first_from(page, start, &[close]);
+            }
+        }
+
+        // Modern MediaWiki has no such comments: start at the content div and
+        // stop before the printfooter / catlinks / sidebar that follow it.
+        if let Some(pos) = page.find(CONTENT_DIV) {
+            // Without a closing `>` the original kept the whole page.
+            let start = page[pos..].find('>').map_or(0, |p| pos + p + 1);
+            return start..Self::find_first_from(page, start, &TAIL_MARKERS);
+        }
+
+        0..page.len()
+    }
+
+    /// Position of the first `markers` entry found at or after `from`, in
+    /// marker order; the end of `page` if none matches.
+    fn find_first_from(page: &str, from: usize, markers: &[&str]) -> usize {
+        markers
+            .iter()
+            .find_map(|marker| page[from..].find(marker))
+            .map_or(page.len(), |pos| from + pos)
     }
 
     fn process_region_name(end: &str) -> Option<String> {
@@ -502,6 +521,58 @@ mod tests {
     use crate::templates::Templates;
 
     use super::*;
+
+    #[test]
+    fn test_content_range_comment_markers() {
+        for page in [
+            "head<!-- start content -->BODY<!-- end content -->tail",
+            "head<!-- bodytext -->BODY<!-- /bodytext -->tail",
+        ] {
+            assert_eq!(&page[GeoHack::content_range(page)], "BODY");
+        }
+    }
+
+    /// An opening marker without its closing counterpart keeps everything
+    /// after it, as the original did.
+    #[test]
+    fn test_content_range_unterminated_marker() {
+        let page = "head<!-- start content -->BODY";
+        assert_eq!(&page[GeoHack::content_range(page)], "BODY");
+    }
+
+    #[test]
+    fn test_content_range_modern_mediawiki() {
+        for tail in [
+            r#"<div class="printfooter">x</div>"#,
+            r#"<div id="catlinks">x</div>"#,
+            r#"<div id="column-one">x</div>"#,
+        ] {
+            let page = format!(r#"head<div id="mw-content-text" dir="ltr">BODY{tail}"#);
+            assert_eq!(&page[GeoHack::content_range(&page)], "BODY");
+        }
+    }
+
+    /// No recognised marker at all: the page is used unchanged.
+    #[test]
+    fn test_content_range_falls_back_to_whole_page() {
+        let page = "<p>no markers here</p>";
+        assert_eq!(&page[GeoHack::content_range(page)], page);
+    }
+
+    #[test]
+    fn test_remove_edit_links() {
+        assert_eq!(
+            GeoHack::remove_edit_links(
+                r##"<h2>T<span class="editsection">[<a href="#">edit</a></span></h2>"##
+            ),
+            "<h2>T</h2>"
+        );
+        // Unterminated span: the remainder is kept verbatim
+        assert_eq!(
+            GeoHack::remove_edit_links(r#"a<span class="editsection">b"#),
+            r#"a<span class="editsection">b"#
+        );
+    }
 
     #[test]
     fn test_fix_language_code() {
