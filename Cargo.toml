@@ -27,6 +27,7 @@ urlencoding = "*"
 html-escape = "*"
 regex = "*"
 aho-corasick = "1"
+wikimisc = { git = "https://github.com/magnusmanske/wikimisc", features = ["telemetry"] }
 
 [dev-dependencies]
 

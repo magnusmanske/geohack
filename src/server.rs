@@ -2,13 +2,15 @@ use crate::{geohack::GeoHack, query_parameters::QueryParameters, templates::Temp
 use anyhow::Result;
 use axum::{
     Router,
-    extract::{Query, State},
+    extract::{Query, Request, State},
     http::{HeaderMap, StatusCode, header::CONTENT_TYPE},
-    response::{Html, IntoResponse},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
     routing::get,
 };
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Instant};
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use wikimisc::telemetry::{Telemetry, TelemetryError};
 
 #[derive(Debug, Clone, Default)]
 struct AppState {
@@ -121,8 +123,31 @@ fn internal_server_error() -> (StatusCode, String) {
     )
 }
 
+/// Reports each request's status and duration to the service dashboard.
+async fn record_request(request: Request, next: Next) -> Response {
+    let start = Instant::now();
+    let response = next.run(request).await;
+    wikimisc::telemetry::record_http_request(response.status().as_u16(), start.elapsed());
+    response
+}
+
+/// Starts pushing health and metrics to the service dashboard (token from
+/// `$DASHBOARD_TOKEN`). Optional: without a token, or on any error, GeoHack
+/// just runs without it.
+fn start_telemetry() {
+    match Telemetry::builder("web")
+        .version(env!("CARGO_PKG_VERSION"))
+        .install()
+    {
+        Ok(_) => tracing::info!("telemetry enabled"),
+        Err(error @ TelemetryError::NoToken) => tracing::info!("telemetry disabled: {error}"),
+        Err(error) => tracing::warn!("telemetry disabled: {error}"),
+    }
+}
+
 pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
     tracing_subscriber::fmt::init();
+    start_telemetry();
 
     let state = AppState::default();
 
@@ -140,6 +165,7 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
         .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
         .route("/testcases.html", get(testcases_html))
+        .layer(middleware::from_fn(record_request))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         //        .layer(cors),

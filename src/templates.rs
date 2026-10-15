@@ -28,6 +28,18 @@ const CACHE_MAX_ENTRIES: u64 = 100;
 /// throttled — nobody is waiting on a background refresh.
 const MAX_CONCURRENT_REFRESHES: usize = 4;
 
+/// How a template request was answered: `fresh` or `stale` from the cache
+/// (a stale one is refreshed in the background), or `fetched` on a cold cache.
+fn record_lookup(result: &'static str) {
+    wikimisc::metrics::counter!("geohack_template_lookups_total", "result" => result).increment(1);
+}
+
+/// Outcome of fetching a template from the wikis (cold cache or background
+/// refresh): `ok`, `fallback` (to the English template), or `failed`.
+fn record_fetch(result: &'static str) {
+    wikimisc::metrics::counter!("geohack_template_fetches_total", "result" => result).increment(1);
+}
+
 /// A cached template plus the instant at which it should be revalidated.
 #[derive(Debug)]
 struct CachedTemplate {
@@ -129,15 +141,24 @@ impl Templates {
 
         // try_get_with coalesces concurrent fetches for the same key and does
         // not cache errors. Only a cold cache waits for the network.
+        let fetched = AtomicBool::new(false);
         let entry = self
             .cache
             .try_get_with(cache_key, async {
+                fetched.store(true, Ordering::Relaxed);
                 self.fetch_template(&key)
                     .await
                     .map(|html| CachedTemplate::new(html, FRESH_FOR))
             })
             .await
             .map_err(|error| anyhow!("Failed to load GeoTemplate: {error}"))?;
+        record_lookup(if fetched.load(Ordering::Relaxed) {
+            "fetched"
+        } else if entry.is_stale() {
+            "stale"
+        } else {
+            "fresh"
+        });
 
         // Stale-while-revalidate: answer from the cache immediately and pull a
         // fresh copy in the background, so no user request ever pays for the
@@ -207,6 +228,7 @@ impl Templates {
         };
 
         if let Some(html) = self.fetch_page(&request_url).await {
+            record_fetch("ok");
             return Ok(html);
         }
 
@@ -217,9 +239,9 @@ impl Templates {
         let request_url_fallback = format!(
             "https://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
-        self.fetch_page(&request_url_fallback)
-            .await
-            .ok_or_else(|| anyhow!("Could not fetch {pagename} (tried {language} and en)"))
+        let html = self.fetch_page(&request_url_fallback).await;
+        record_fetch(if html.is_some() { "fallback" } else { "failed" });
+        html.ok_or_else(|| anyhow!("Could not fetch {pagename} (tried {language} and en)"))
     }
 
     /// Fetch a page, returning `None` for transport errors and for any
