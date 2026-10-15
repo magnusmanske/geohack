@@ -2,6 +2,7 @@ use crate::query_parameters::QueryParameters;
 use anyhow::{Result, anyhow};
 use moka::future::Cache;
 use std::{
+    fmt,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -10,7 +11,9 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
-const HTTP_USER_AGENT: &str = "GeoHack/2.0";
+/// Per the Wikimedia User-Agent policy, which throttles generic agents harder:
+/// <https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy>
+const HTTP_USER_AGENT: &str = "GeoHack/2.0 (https://geohack.toolforge.org; magnusmanske@proton.me)";
 
 /// How long a freshly fetched template is served without any revalidation.
 const FRESH_FOR: Duration = Duration::from_secs(60 * 60); // 1h
@@ -35,15 +38,33 @@ fn record_lookup(result: &'static str) {
 }
 
 /// Outcome of fetching a template from the wikis (cold cache or background
-/// refresh): `ok`, `fallback` (to the English template), or `failed`.
+/// refresh): `ok`, `fallback` (to the English template), `missing` (neither
+/// wiki has it), or `failed` (a wiki could not be reached or errored).
 fn record_fetch(result: &'static str) {
     wikimisc::metrics::counter!("geohack_template_fetches_total", "result" => result).increment(1);
 }
 
+/// The requested template exists neither on the requested wiki nor on enwiki,
+/// e.g. for an unknown `globe:`. Caused by the request, not by GeoHack.
+#[derive(Debug)]
+pub struct TemplateMissing {
+    pagename: String,
+}
+
+impl fmt::Display for TemplateMissing {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} does not exist", self.pagename)
+    }
+}
+
+impl std::error::Error for TemplateMissing {}
+
 /// A cached template plus the instant at which it should be revalidated.
+/// `html` is `None` for a template that is known not to exist, so that
+/// requests for it do not hit the wikis every time.
 #[derive(Debug)]
 struct CachedTemplate {
-    html: Arc<str>,
+    html: Option<Arc<str>>,
     stale_at: Instant,
     /// Set while a background refresh for this entry is in flight, so that
     /// concurrent requests trigger at most one upstream fetch.
@@ -51,7 +72,7 @@ struct CachedTemplate {
 }
 
 impl CachedTemplate {
-    fn new(html: Arc<str>, fresh_for: Duration) -> Arc<Self> {
+    fn new(html: Option<Arc<str>>, fresh_for: Duration) -> Arc<Self> {
         Arc::new(Self {
             html,
             stale_at: Instant::now() + fresh_for,
@@ -94,6 +115,18 @@ impl TemplateKey {
             project,
         } = self;
         format!("{language}-{globe}-{sandbox}-{project:?}")
+    }
+
+    fn pagename(&self) -> String {
+        let mut pagename = "Template:GeoTemplate".to_string();
+        if !self.globe.is_empty() && self.globe != "earth" {
+            pagename.push('/');
+            pagename.push_str(&urlencoding::encode(&self.globe));
+        }
+        if self.sandbox {
+            pagename += "/sandbox";
+        }
+        pagename
     }
 }
 
@@ -140,7 +173,8 @@ impl Templates {
         }
 
         // try_get_with coalesces concurrent fetches for the same key and does
-        // not cache errors. Only a cold cache waits for the network.
+        // not cache errors; a missing template is not an error and is cached.
+        // Only a cold cache waits for the network.
         let fetched = AtomicBool::new(false);
         let entry = self
             .cache
@@ -164,10 +198,15 @@ impl Templates {
         // fresh copy in the background, so no user request ever pays for the
         // upstream round-trip once the template has been seen.
         if entry.is_stale() && entry.claim_refresh() {
-            self.spawn_refresh(key, Arc::clone(&entry));
+            self.spawn_refresh(key.clone(), Arc::clone(&entry));
         }
 
-        Ok(Arc::clone(&entry.html))
+        entry.html.clone().ok_or_else(|| {
+            TemplateMissing {
+                pagename: key.pagename(),
+            }
+            .into()
+        })
     }
 
     fn spawn_refresh(&self, key: TemplateKey, stale: Arc<CachedTemplate>) {
@@ -191,7 +230,7 @@ impl Templates {
                     this.cache
                         .insert(
                             cache_key,
-                            CachedTemplate::new(Arc::clone(&stale.html), RETRY_AFTER),
+                            CachedTemplate::new(stale.html.clone(), RETRY_AFTER),
                         )
                         .await;
                     stale.release_refresh();
@@ -200,22 +239,13 @@ impl Templates {
         });
     }
 
-    async fn fetch_template(&self, key: &TemplateKey) -> Result<Arc<str>> {
+    /// Fetches the template from the requested wiki, falling back to enwiki.
+    /// `Ok(None)` means both wikis answered 404, i.e. the template does not exist.
+    async fn fetch_template(&self, key: &TemplateKey) -> Result<Option<Arc<str>>> {
         let TemplateKey {
-            language,
-            globe,
-            sandbox,
-            project,
+            language, project, ..
         } = key;
-
-        let mut pagename = "Template:GeoTemplate".to_string();
-        if !globe.is_empty() && globe != "earth" {
-            pagename.push('/');
-            pagename.push_str(&urlencoding::encode(globe));
-        }
-        if *sandbox {
-            pagename += "/sandbox";
-        }
+        let pagename = key.pagename();
         let request_url = if let Some(project) = project {
             let project = urlencoding::encode(project);
             format!(
@@ -227,31 +257,54 @@ impl Templates {
             )
         };
 
-        if let Some(html) = self.fetch_page(&request_url).await {
-            record_fetch("ok");
-            return Ok(html);
-        }
+        let missing_on_requested_wiki = match self.fetch_page(&request_url).await {
+            Ok(Some(html)) => {
+                record_fetch("ok");
+                return Ok(Some(html));
+            }
+            Ok(None) => true,
+            Err(error) => {
+                tracing::info!(%error, %request_url, "GeoTemplate fetch failed");
+                false
+            }
+        };
 
         // Fall back to the English template, localized via uselang, when the
-        // wiki has no GeoTemplate of its own. MediaWiki answers 404 with a
-        // "page does not exist" body, which must not be used as a template.
+        // wiki has no GeoTemplate of its own.
         tracing::info!(language, %request_url, "GeoTemplate unavailable, falling back to en");
         let request_url_fallback = format!(
             "https://en.wikipedia.org/w/index.php?title={pagename}&uselang={language}&useskin=monobook"
         );
-        let html = self.fetch_page(&request_url_fallback).await;
-        record_fetch(if html.is_some() { "fallback" } else { "failed" });
-        html.ok_or_else(|| anyhow!("Could not fetch {pagename} (tried {language} and en)"))
+        let error = match self.fetch_page(&request_url_fallback).await {
+            Ok(Some(html)) => {
+                record_fetch("fallback");
+                return Ok(Some(html));
+            }
+            // Only a definite 404 from both wikis is cached as missing; after
+            // any other failure the template might well exist.
+            Ok(None) if missing_on_requested_wiki => {
+                record_fetch("missing");
+                return Ok(None);
+            }
+            Ok(None) => anyhow!("not on en, and {language} could not be checked"),
+            Err(error) => error,
+        };
+        record_fetch("failed");
+        Err(error.context(format!(
+            "Could not fetch {pagename} (tried {language} and en)"
+        )))
     }
 
-    /// Fetch a page, returning `None` for transport errors and for any
-    /// non-success HTTP status (notably 404 for a missing template)
-    async fn fetch_page(&self, url: &str) -> Option<Arc<str>> {
-        let response = self.client.get(url).send().await.ok()?;
-        if !response.status().is_success() {
-            return None;
+    /// Fetches a page; `Ok(None)` if it does not exist (HTTP 404). MediaWiki
+    /// answers that with a "page does not exist" body, which must not be used
+    /// as a template. Transport errors and other statuses are errors.
+    async fn fetch_page(&self, url: &str) -> Result<Option<Arc<str>>> {
+        let response = self.client.get(url).send().await?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
         }
-        Some(response.text().await.ok()?.into())
+        let html = response.error_for_status()?.text().await?;
+        Ok(Some(html.into()))
     }
 
     fn build_reqwest_client() -> Result<reqwest::Client> {
@@ -289,7 +342,10 @@ impl Templates {
         ];
         for (key, html) in test_cases {
             self.cache
-                .insert(key.to_string(), CachedTemplate::new(html.into(), FRESH_FOR))
+                .insert(
+                    key.to_string(),
+                    CachedTemplate::new(Some(html.into()), FRESH_FOR),
+                )
                 .await;
         }
         Ok(())
@@ -323,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_only_one_caller_claims_a_refresh() {
-        let entry = CachedTemplate::new("x".into(), Duration::ZERO);
+        let entry = CachedTemplate::new(Some("x".into()), Duration::ZERO);
         assert!(entry.is_stale());
         assert!(entry.claim_refresh());
         assert!(!entry.claim_refresh());
@@ -332,7 +388,53 @@ mod tests {
     }
 
     #[test]
+    fn test_pagename() {
+        let key = TemplateKey {
+            language: "de".to_string(),
+            globe: "earth".to_string(),
+            sandbox: false,
+            project: None,
+        };
+        assert_eq!(key.pagename(), "Template:GeoTemplate");
+        assert_eq!(
+            TemplateKey {
+                globe: "mars".to_string(),
+                sandbox: true,
+                ..key
+            }
+            .pagename(),
+            "Template:GeoTemplate/mars/sandbox"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cached_missing_template_is_reported_without_fetching() {
+        let templates = Templates::default();
+        let key = TemplateKey {
+            language: "ar".to_string(),
+            globe: "export".to_string(),
+            sandbox: false,
+            project: None,
+        };
+        templates
+            .cache
+            .insert(key.cache_key(), CachedTemplate::new(None, FRESH_FOR))
+            .await;
+        let query = QueryParameters::new_for_test("1_N_2_E_globe:export", None);
+        let error = templates
+            .load("ar", "export", &query, false)
+            .await
+            .expect_err("missing template must be an error");
+        assert_eq!(
+            error
+                .downcast_ref::<TemplateMissing>()
+                .map(ToString::to_string),
+            Some("Template:GeoTemplate/export does not exist".to_string())
+        );
+    }
+
+    #[test]
     fn test_fresh_entry_is_not_stale() {
-        assert!(!CachedTemplate::new("x".into(), FRESH_FOR).is_stale());
+        assert!(!CachedTemplate::new(Some("x".into()), FRESH_FOR).is_stale());
     }
 }

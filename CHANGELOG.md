@@ -18,6 +18,15 @@
   into the existing replacement map, body extraction trims in place, and
   `process` no longer clones the output when no `region:` is given.
 
+### Fixed
+- A template that exists on neither the requested wiki nor enwiki (e.g. the
+  `globe:export` link in the ar and th GeoTemplates) now returns HTTP 404
+  instead of 500, and is cached so repeat requests no longer hit the wikis.
+  The `geohack_template_fetches_total` metric reports these as `missing`, so
+  `failed` now means a wiki could not be reached or returned an error.
+- The upstream User-Agent now carries a URL and contact address, as the
+  Wikimedia User-Agent policy requires; generic agents are throttled harder.
+
 ## 0.1.1 - 2026-07-28
 
 ### Security

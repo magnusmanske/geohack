@@ -1,4 +1,8 @@
-use crate::{geohack::GeoHack, query_parameters::QueryParameters, templates::Templates};
+use crate::{
+    geohack::GeoHack,
+    query_parameters::QueryParameters,
+    templates::{TemplateMissing, Templates},
+};
 use anyhow::Result;
 use axum::{
     Router,
@@ -100,8 +104,13 @@ async fn geohack(
         .load(&language, &globe, &query, purge)
         .await
         .map_err(|error| {
-            tracing::error!(%error, language, globe, "Failed to load GeoTemplate");
-            internal_server_error()
+            if error.is::<TemplateMissing>() {
+                tracing::info!(%error, language, globe, "GeoTemplate does not exist");
+                (StatusCode::NOT_FOUND, format!("Not found: {error}"))
+            } else {
+                tracing::error!(%error, language, globe, "Failed to load GeoTemplate");
+                internal_server_error()
+            }
         })?;
 
     geohack.set_page_content(&template_content);
