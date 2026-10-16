@@ -19,6 +19,11 @@
   `process` no longer clones the output when no `region:` is given.
 
 ### Fixed
+- A panic in a request handler no longer kills the whole process: release
+  builds now unwind instead of aborting (`panic = 'abort'` removed), and the
+  panicking request is answered with HTTP 500 instead of a dropped
+  connection. The panic is still logged and reported to the service
+  dashboard, and the 500 shows up in the request metrics.
 - A template that exists on neither the requested wiki nor enwiki (e.g. the
   `globe:export` link in the ar and th GeoTemplates) now returns HTTP 404
   instead of 500, and is cached so repeat requests no longer hit the wikis.

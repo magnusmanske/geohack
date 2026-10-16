@@ -709,7 +709,7 @@ mod tests {
     #[tokio::test]
     async fn test_multibyte_region_does_not_panic() {
         // A multi-byte UTF-8 region code used to panic (byte slicing), which
-        // aborts the whole process in release builds (panic = 'abort')
+        // back then (panic = 'abort') took down the whole process
         let query = QueryParameters::new_for_test("40_N_74_W_region:x\u{e9}", None);
         let html = run_geohack(query).await.unwrap();
         assert!(!html.is_empty());

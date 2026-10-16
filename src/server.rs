@@ -13,7 +13,7 @@ use axum::{
     routing::get,
 };
 use std::{net::SocketAddr, time::Instant};
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::{catch_panic::CatchPanicLayer, compression::CompressionLayer, trace::TraceLayer};
 use wikimisc::telemetry::{Telemetry, TelemetryError};
 
 #[derive(Debug, Clone, Default)]
@@ -140,6 +140,18 @@ async fn record_request(request: Request, next: Next) -> Response {
     response
 }
 
+/// Wraps the routes in the middleware stack. The last layer added is the
+/// outermost, so request metrics and tracing see the 500 that `CatchPanicLayer`
+/// turns a panicking handler into: a panic fails only its own request.
+fn add_layers<S: Clone + Send + Sync + 'static>(router: Router<S>) -> Router<S> {
+    router
+        .layer(CatchPanicLayer::new())
+        .layer(middleware::from_fn(record_request))
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new())
+    // .layer(CorsLayer::new().allow_origin(Any))
+}
+
 /// Starts pushing health and metrics to the service dashboard (token from
 /// `$DASHBOARD_TOKEN`). Optional: without a token, or on any error, GeoHack
 /// just runs without it.
@@ -160,8 +172,6 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
 
     let state = AppState::default();
 
-    // let cors = CorsLayer::new().allow_origin(Any);
-
     let app = Router::new()
         .route("/", get(index))
         .route("/index.php", get(index))
@@ -173,12 +183,8 @@ pub async fn run_server(address: [u8; 4], port: u16) -> Result<()> {
         .route("/bullet.gif", get(bullet_gif))
         .route("/lock_icon.gif", get(lock_icon_gif))
         .route("/external.png", get(external_png))
-        .route("/testcases.html", get(testcases_html))
-        .layer(middleware::from_fn(record_request))
-        .layer(TraceLayer::new_for_http())
-        .layer(CompressionLayer::new())
-        //        .layer(cors),
-        .with_state(state);
+        .route("/testcases.html", get(testcases_html));
+    let app = add_layers(app).with_state(state);
 
     let ip_addr = std::net::Ipv4Addr::from(address);
     tracing::info!("Starting server on http://{ip_addr}:{port}");
@@ -232,5 +238,22 @@ mod tests {
                 vec!["text/html; charset=utf-8".to_string()]
             );
         }
+    }
+
+    /// A panicking handler must answer 500 rather than drop the connection
+    /// (or, as with `panic = 'abort'`, take the whole process down).
+    #[tokio::test]
+    async fn test_panicking_handler_returns_500() {
+        use tower::ServiceExt;
+        async fn panics() -> &'static str {
+            panic!("test panic")
+        }
+        let app = add_layers(Router::new().route("/panic", get(panics)));
+        let request = Request::builder()
+            .uri("/panic")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
